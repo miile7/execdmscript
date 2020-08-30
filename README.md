@@ -3,6 +3,13 @@
 A python module for executing DM-Script from python in 
 [Gatan Microscopy Suite® (GMS) (Digital Micrograph)](https://www.gatan.com/products/tem-analysis/gatan-microscopy-suite-software).
 
+**Table of Contents**
+
+1. [Foreword](#foreword)
+2. [Usage](#usage)
+3. [Installation](#installation)
+4. [License and Publications](#license-and-publications)
+
 ## Foreword
 
 This module is created because I needed to use DM-Scripts Dialogs in my project. But this

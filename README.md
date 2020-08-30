@@ -153,7 +153,7 @@ The upper code works for file structures like
 
 ### Via PIP (Recommended)
 
-You can install `execdmscript` via [PyPI](https://pypi.org/) by running
+You can install `execdmscript` via [PyPI](https://pypi.org/project/execdmscript/) by running
 
 ```cmd
 pip install execdmscript

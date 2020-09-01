@@ -1,5 +1,5 @@
-Version 1.1
-===========
+Version 1.0.1
+=============
 
 - Fixing dm-script strings were failing when they contained a special character (e.g. \ or "), they 
   are escaped now

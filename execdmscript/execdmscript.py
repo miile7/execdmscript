@@ -235,6 +235,60 @@ def get_python_type(datatype: typing.Union[str, type]):
     
     raise LookupError("Cannot find the python type for '{}'".format(datatype))
 
+_replace_dm_variable_name_reg = re.compile(r"[^\w\d_]")
+def escape_dm_variable(variable_name: str):
+    """Replace all special characters that are not allowed with underlines.
+
+    Raises
+    ------
+    ValueError:
+        When the variable is not a valid name (this is only when it is an empty
+        string at the moment)
+    
+    Parameters
+    ----------
+    variable_name : str
+        The name of the variable
+    
+    Returns
+    -------
+    str
+        The valid variable name
+    """
+
+    global _replace_dm_variable_name_reg
+
+    name = re.sub(_replace_dm_variable_name_reg, "_", variable_name)
+
+    if name == "":
+        raise ValueError(("The variable name '{}' is not a valid (dm-script) " + 
+                          "variable name.").format(variable_name))
+    
+    return name
+
+def escape_dm_string(str_content: str):
+    """Escape all special characters so the `str_content` can safely be used 
+    in dm-script strings.
+
+    Parameters
+    ----------
+    str_content : str
+        The text that should be added to a dm-script string
+    
+    Returns
+    -------
+    str
+        The str with additional escape characters
+    """
+
+    return (str(str_content)
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+            .replace("\0", "\\0"))
+
+
 class DMScriptWrapper:
     """Wraps one or more dm-scripts.
     """
@@ -479,12 +533,15 @@ class DMScriptWrapper:
                         )
                     
                     dmscript.append(
-                        "__exec_dmscript_linearizeTags({tg}_tg, {key}, \"{key}\", \"{key}\");".format(
-                            key=var_name, tg=sync_code_tg_name
+                        "__exec_dmscript_linearizeTags({tg}_tg, {var_name}, \"{key}\", \"{key}\");".format(
+                            var_name=escape_dm_variable(var_name),
+                            key=escape_dm_string(var_name), 
+                            tg=sync_code_tg_name
                     ))
                 else:
                     dmscript.append(sync_code_template.format(
-                        key=var_name, val=var_name, 
+                        key=escape_dm_string(var_name), 
+                        val=escape_dm_variable(var_name), 
                         type=get_dm_type(var_type, for_taggroup=True)
                     ))
         
@@ -559,11 +616,13 @@ class DMScriptWrapper:
         path = list(path)
 
         dmscript.append("\n".join((
-            "if(!{tg}_tg.TagGroupDoesTagExist(\"{{{{available-paths}}}}{var}\")){{",
-                "number index_{var}_{t}{r} = {tg}_tg.TagGroupCreateNewLabeledTag(\"{{{{available-paths}}}}{var}\");",
+            "if(!{tg}_tg.TagGroupDoesTagExist(\"{{{{available-paths}}}}{key}\")){{",
+                "number index_{var}_{t}{r} = {tg}_tg.TagGroupCreateNewLabeledTag(\"{{{{available-paths}}}}{key}\");",
                 "{tg}_tg.TagGroupSetIndexedTagAsString(index_{var}_{t}{r}, \"\");",
             "}}"
-        )).format(tg=dm_tg_name, var=var_name, t=round(time.time() * 100),
+        )).format(tg=escape_dm_variable(dm_tg_name), 
+                  key=escape_dm_string(var_name), 
+                  var=escape_dm_variable(var_name), t=round(time.time() * 100),
                   r=random.randint(0, 99999999)))
         
         for var_key, var_type in iterator:
@@ -607,15 +666,18 @@ class DMScriptWrapper:
                 "{tg}_index = {tg}_tg.TagGroupCreateNewLabeledTag(\"{{{{type}}}}{destpath}\")",
                 "{tg}_tg.TagGroupSetIndexedTagAsString({tg}_index, \"{tgtype}\");",
                 "string available_index_{var}_{varkey}_{t}{r};",
-                "{tg}_tg.TagGroupGetTagAsString(\"{{{{available-paths}}}}{var}\", available_index_{var}_{varkey}_{t}{r});",
+                "{tg}_tg.TagGroupGetTagAsString(\"{{{{available-paths}}}}{key}\", available_index_{var}_{varkey}_{t}{r});",
                 "available_index_{var}_{varkey}_{t}{r} += \"{destpath};\";",
-                "{tg}_tg.TagGroupSetTagAsString(\"{{{{available-paths}}}}{var}\", available_index_{var}_{varkey}_{t}{r});",
+                "{tg}_tg.TagGroupSetTagAsString(\"{{{{available-paths}}}}{key}\", available_index_{var}_{varkey}_{t}{r});",
             )).format(
-                tg=dm_tg_name, var=var_name, varkey=var_key,
+                tg=escape_dm_variable(dm_tg_name), 
+                var=escape_dm_variable(var_name), 
+                key=escape_dm_string(var_name),
+                varkey=escape_dm_variable(var_key),
                 scripttype=get_dm_type(var_type, for_taggroup=False),
-                tgtype=tg_type,
-                srcpath=source_path,
-                destpath=destination_path,
+                tgtype=escape_dm_variable(tg_type),
+                srcpath=escape_dm_string(source_path),
+                destpath=escape_dm_string(destination_path),
                 t=round(time.time() * 100),
                 r=random.randint(0, 99999999)
             )
@@ -841,7 +903,12 @@ class DMScriptWrapper:
         if py_type in (dict, list, tuple):
             dmscript += DMScriptWrapper._getTagGroupDMCodeForVariable(name, value)
         else:
-            dmscript.append("{} {} = {};".format(dm_type, name, value))
+            if isinstance(value, str):
+                value = "\"{}\"".format(escape_dm_string(value))
+            
+            dmscript.append("{} {} = {};".format(dm_type, 
+                                                 escape_dm_variable(name), 
+                                                 value))
         
         return "\n".join(dmscript)
     
@@ -879,12 +946,14 @@ class DMScriptWrapper:
             iterator = enumerate(value)
         
         # set variable
-        dmscript.append("{} {} = {};".format(dm_type, prefix + name, creator))
+        dmscript.append("{} {} = {};".format(dm_type, 
+                                             escape_dm_variable(prefix + name), 
+                                             creator))
 
         index = None
         if py_type == dict:
             # declare the index for TagGroups
-            index = "__exec_dmscript_{}_index".format(name)
+            index = "__exec_dmscript_{}_index".format(escape_dm_variable(name))
             dmscript.append("number {};".format(index))
 
         for i, (key, value) in enumerate(iterator):
@@ -900,7 +969,7 @@ class DMScriptWrapper:
 
             if value_py_type == str:
                 # add quotes to str values
-                value = "\"{}\"".format(value)
+                value = "\"{}\"".format(escape_dm_string(value))
             elif value_py_type == bool:
                 value = int(value)
             elif value_py_type in (dict, list, tuple):
@@ -911,7 +980,7 @@ class DMScriptWrapper:
                 # this name gets recursively longer, the prefix is only added
                 # once
                 p = "__exec_dmscript_"
-                n = "{}_tg_{}_{}".format(name, i, depth + 1)
+                n = "{}_tg_{}_{}".format(escape_dm_variable(name), i, depth + 1)
                 dmscript += DMScriptWrapper._getTagGroupDMCodeForVariable(
                     n, value, p, depth + 1
                 )
@@ -922,16 +991,18 @@ class DMScriptWrapper:
             if py_type in (list, tuple):
                 # add the next index to the list
                 dmscript.append("{}.TagGroupInsertTagAs{}(infinity(), {});".format(
-                    prefix + name, value_dm_type, value
+                    escape_dm_variable(prefix + name), value_dm_type, value
                 ))
             else:
                 # add the labeled tag and the value
                 dmscript += [
                     "{} = {}.TagGroupCreateNewLabeledTag(\"{}\");".format(
-                        index, prefix + name, key
+                        index, escape_dm_variable(prefix + name), 
+                        escape_dm_string(key)
                     ),
                     "{}.TagGroupSetIndexedTagAs{}({}, {});".format(
-                        prefix + name, value_dm_type, index, value
+                        escape_dm_variable(prefix + name), value_dm_type, 
+                        index, value
                     )
                 ]
     

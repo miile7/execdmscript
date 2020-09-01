@@ -140,7 +140,7 @@ def exec_dmscript(*scripts: typing.Union[str, pathlib.PurePath, typing.Tuple[str
     debug_file : str or pathlib.PurePath, optional
         The file to save the dm-script to, this will be overwritten if it 
         exists, if not given the file is called "tmp-execdmscript.s" and will
-        be placed in the same directory as this file, default: None
+        be placed in the current working directory, default: None
 
     Returns
     -------
@@ -324,7 +324,7 @@ class DMScriptWrapper:
         debug_file : str or pathlib.PurePath, optional
             The file to save the dm-script to, this will be overwritten if it 
             exists, if not given the file is called "tmp-execdmscript.s" and 
-            will be placed in the same directory as this file, default: None
+            will be placed in the current working directory, default: None
         """
         self.scripts = DMScriptWrapper.normalizeScripts(scripts)
         self._creation_time_id = str(round(time.time() * 100))
@@ -333,6 +333,7 @@ class DMScriptWrapper:
         self.setvars = setvars
         self.synchronized_vars = {}
         self.debug = bool(debug)
+        self.debug_file = debug_file
         self._slash_split_reg = re.compile("(?<!/)/(?!/)")
 
         # add all setvars to the readvars to allow accessing them after the 
@@ -359,9 +360,12 @@ class DMScriptWrapper:
         """
         
         dmscript = self.getExecDMScriptCode()
+
+        path = self.debug_file
+        if not isinstance(path, (str, pathlib.PurePath)):
+            path = os.path.join(os.getcwd(), "tmp-execdmscript.s")
         
         if self.debug:
-            path = os.path.join(os.path.dirname(__file__), "tmp-execdmscript.s")
             with open(path, "w+") as f:
                 f.write(dmscript)
                 f.close()

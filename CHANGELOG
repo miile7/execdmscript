@@ -1,0 +1,7 @@
+Version 1.1
+===========
+
+- Fixing dm-script strings were failing when they contained a special character (e.g. \ or "), they 
+  are escaped now
+- Fixing value of `debug_file` was ignored
+- Changing default `debug_file` path is now relative to the current working directory

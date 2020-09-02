@@ -1,3 +1,10 @@
+Version 1.0.2
+=============
+
+- Adding new error class `DMScriptError`
+- Checking dm-script execution on runtime dm-script errors, displaying them to the user with
+  corrected line numbers
+
 Version 1.0.1
 =============
 

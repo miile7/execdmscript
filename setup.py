@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="execdmscript",
-    version="1.0.1",
+    version="1.0.2",
     author="miile7",
     author_email="miile7@gmx.de",
     description=("A python module for executing DM-Script from python in the " + 

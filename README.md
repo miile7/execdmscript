@@ -23,27 +23,35 @@ solve those problems and hide verything away.
 The module can oly be used inside Gatan Microscopy Suite®. The following example shows the
 basic usage:
 ```python
-from execdmscript import exec_dmscript
+import traceback
 
-# some script to execute
-script = "OKDialog(start_message)"
-script_file = "path/to/script.s"
+try:
+	from execdmscript import exec_dmscript
 
-# variables that will be defined for the scripts (and readable later on in python)
-sv = {"start_message": "Starting now!"}
-# variables the dm-script defines and that should be readable in the python file
-rv = {"selected_images": list,
-      "options": "TagGroup",
-      "show_message": "nUmBeR"}
+	# some script to execute
+	script = "OKDialog(start_message)"
+	script_file = "path/to/script.s"
 
-with exec_dmscript(script, script_file, readvars=rv, setvars=sv) as script:
-    print(script["start_message"])
-    print(script["selected_images"])
-    print(script["options"])
-    print(script["show_message"])
+	# variables that will be defined for the scripts (and readable later on in python)
+	sv = {"start_message": "Starting now!"}
+	# variables the dm-script defines and that should be readable in the python file
+	rv = {"selected_images": list,
+		"options": "TagGroup",
+		"show_message": "nUmBeR"}
 
-    # all variables can be accessed via indexing `script` or by using 
-    # `script.synchronized_vars`, note that `script` is also iterable like a dict
+	with exec_dmscript(script, script_file, readvars=rv, setvars=sv) as script:
+		print(script["start_message"])
+		print(script["selected_images"])
+		print(script["options"])
+		print(script["show_message"])
+
+		# all variables can be accessed via indexing `script` or by using 
+		# `script.synchronized_vars`, note that `script` is also iterable like a dict
+except Exception as e:
+	# dm-script error messages are very bad, use this for getting the error text and the 
+	# correct traceback
+	print("Exception: ", e)
+	traceback.print_exc()
 ```
 
 Note that the upper script only runs when `execdmscript` is installed in one of the 

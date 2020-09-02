@@ -23,6 +23,63 @@ except (ModuleNotFoundError, ImportError) as e:
                        "Microscopy Suite program.")
     DM = None
 
+class DMScriptError(RuntimeError):
+    """Error in executed dm-script code."""
+    # The doc is shown in the GMS error message. Keeping the real doc string
+    # makes the error message very big and fills it with completely useless
+    # information
+    # 
+    # """This represents an error in the executed dm-script code.
+    # 
+    # Parameters
+    # ----------
+    # msg : str
+    #     The text to show
+    # script_origin : str
+    #     The name of the executed script that the error occurres in
+    # line_in_origin : int
+    #     The line in the executed script (the `script_origin`) where the error
+    #     occurres
+    # line_in_complete : int
+    #     The line in the compound script (including the setvars and readvars 
+    #     code)
+    # """
+
+    def __init__(self, msg: str, script_origin: str, line_in_origin: int, 
+                 line_in_complete: int) -> None:
+        """
+        Parameters
+        ----------
+        msg : str
+            The text to show
+        script_origin : str
+            The name of the executed script that the error occurres in
+        line_in_origin : int
+            The line in the executed script (the `script_origin`) where the error
+            occurres
+        line_in_complete : int
+            The line in the compound script (including the setvars and readvars 
+            code)
+        """
+        super(DMScriptError, self).__init__(msg)
+        self.script_origin = script_origin
+        self.line_in_origin = line_in_origin
+        self.line_in_complete = line_in_complete
+        self.msg = msg
+    
+    def __str__(self) -> str:
+        """Get the error as a a string.
+
+        Returns
+        -------
+        str
+            The error with (most of) the details
+        """
+
+        return ("Error in dm-script code {} in line {} (line {} in complete " + 
+                "code): {}").format(self.script_origin, self.line_in_origin,
+                                    self.line_in_complete, self.msg)
+
 Convertable = typing.Union[int, float, bool, str, dict, list, tuple, None]
 
 _python_dm_type_map = ({
@@ -335,6 +392,7 @@ class DMScriptWrapper:
         self.debug = bool(debug)
         self.debug_file = debug_file
         self._slash_split_reg = re.compile("(?<!/)/(?!/)")
+        self._script_sources = []
 
         # add all setvars to the readvars to allow accessing them after the 
         # script is executed
@@ -373,7 +431,37 @@ class DMScriptWrapper:
                       "because file is running in debug mode.").format(path))
             return True
         else:
-            DM.ExecuteScriptString(dmscript)
+            try:
+                DM.ExecuteScriptString(dmscript)
+            except RuntimeError as e:
+                matches = re.match(r"Error in line ([\d]+)\s*\n(.*)", str(e))
+
+                if matches is not None:
+                    # there is an error in the executed script, read the line
+                    # and check in which script the error is, then calculate
+                    # the line in the script, this is better information for
+                    # the user as he/she doesn't know what code is prefixed 
+                    # and suffixed
+                    line = int(matches.group(1))
+
+                    for script_src in self._script_sources:
+                        if (script_src["start"] <= line and 
+                            line <= script_src["end"]):
+                            msg = matches.group(2)
+                            src = script_src["origin-name"]
+                            l = line - script_src["start"] + 1
+
+                            error = DMScriptError(msg, src, l, line)
+                            
+                            # GMS shows the docstring in their error message,
+                            # so to offer a useful text, overwrite the docstring
+                            error.__doc__ = str(error)
+                            type(error).__doc__ = str(error)
+                            DMScriptError.__doc__ = str(error)
+
+                            raise error from e
+                else:
+                    raise e
             self._loadVariablesFromDMScript()
             return True
             
@@ -428,36 +516,84 @@ class DMScriptWrapper:
         str
             The code to execute
         """
+        self._script_sources = []
+        last_pos = 1
+
         dmscript = [
             "// This code is created automatically by concatenating files and ",
             "// code fragments.",
             "// ",
-            "// This code is generated with the exedmscript module."
-            "",
-            "",
-            self.getSetVarsDMCode()
+            "// This code is generated with the exedmscript module.",
+            "//",
+            "//" + " =" * 50
         ]
+        new_pos = last_pos + len(dmscript) - 1
+        self._script_sources.append({
+            "start": last_pos, 
+            "end": new_pos,
+            "origin-name": "<comments>",
+            "origin-detail": None
+        })
+        last_pos = new_pos + 1
+
+        setvars_code = self.getSetVarsDMCode()
+        dmscript.append(setvars_code)
+
+        new_pos = last_pos + setvars_code.count("\n")
+        self._script_sources.append({
+            "start": last_pos, 
+            "end": new_pos,
+            "origin-name": "<setvars code>",
+            "origin-detail": self.getSetVarsDMCode
+        })
+        last_pos = new_pos + 1
         
-        for kind, script in self.scripts:
+        for i, (kind, script) in enumerate(self.scripts):
             if isinstance(kind, str):
                 kind = kind.lower()
 
             if kind == "file":
+                source = script
+                comment = "// File {}".format(escape_dm_string(source))
                 with open(script, "r") as f:
-                    dmscript += [
-                        "// File {}".format(script),
-                        f.read(),
-                        ""
-                    ]
+                    code = f.read()
             elif kind == "script":
-                dmscript += [
-                    "// Directly given script",
-                    script,
-                    ""
-                ]
+                source = "<inline script in parameter {}>".format(i)
+                comment = "// Directly given script"
+                code = script
+            
+            dmscript.append(comment)
+            new_pos = last_pos + comment.count("\n")
+            self._script_sources.append({
+                "start": last_pos, 
+                "end": new_pos,
+                "origin-name": "<comment>",
+                "origin-detail": None
+            })
+            last_pos = new_pos + 1
+
+            dmscript.append(code)
+            new_pos = last_pos + code.count("\n")
+            self._script_sources.append({
+                "start": last_pos, 
+                "end": new_pos,
+                "origin-name": source,
+                "origin-detail": script
+            })
+            last_pos = new_pos + 1
         
-        dmscript.append(self.getSyncDMCode())
+        readvars_code = self.getSyncDMCode()
+        dmscript.append(readvars_code)
         
+        new_pos = last_pos + readvars_code.count("\n")
+        self._script_sources.append({
+            "start": last_pos, 
+            "end": new_pos ,
+            "origin-name": "<readvars code>",
+            "origin-type": self.getSyncDMCode
+        })
+        last_pos = new_pos + 1
+
         return "\n".join(dmscript)
     
     def getSetVarsDMCode(self) -> str:
@@ -473,7 +609,6 @@ class DMScriptWrapper:
             return ""
 
         dmscript = [
-            "",
             "// Setting variables from python values"
         ]
         for name, val in self.setvars.items():

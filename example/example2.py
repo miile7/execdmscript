@@ -69,8 +69,10 @@ if in_digital_micrograph and file_is_missing:
 
 import os
 import sys
-import pprint
-import traceback
+import time
+import threading
+
+import DigitalMicrograph as DM
 
 if __file__ != "":
 	# add the parent directory to the system path so the execdmscript file
@@ -80,92 +82,66 @@ if __file__ != "":
 	if base_path not in sys.path:
 		sys.path.insert(0, base_path)
 
-import execdmscript
+from execdmscript import exec_dmscript
 
-script1 = """
-number a = 40;
-number c = a + b;
-string d = \"This is a test string\";
-"""
+try:
+	def do_something():
+		for i in range(100):
+			i += 1
+			print("Progress: {}".format(i))
+			DM.GetPersistentTagGroup().SetTagAsLong("__progress", i);
+			time.sleep(0.05)
 
-script2 = os.path.join(os.path.dirname(__file__), "execdmscript_example.s")
+	thread = threading.Thread(target=do_something)
+	thread.start()
 
-script3 = """
-TagGroup tg3 = NewTagGroup();
-
-index = tg3.TagGroupCreateNewLabeledTag("a");
-tg3.TagGroupSetIndexedTagAsFloat(index, 10.0001);
-index = tg3.TagGroupCreateNewLabeledTag("b");
-tg3.TagGroupSetIndexedTagAsFloat(index, 11.0002);
-
-TagGroup tl2 = newTagList();
-"""
-
-parent = os.path.expanduser("~")
-home_dirs = []
-for e in os.listdir(parent):
-    if os.path.isdir(os.path.join(parent, e)):
-        script3 += "tl2.TagGroupInsertTagAsString(infinity(), \"{}\");\n".format(
-            str(e).replace("\\", "\\\\").replace("\"", "\\\"")
-        )
-        home_dirs.append(e)
-
-script3 += """
-index = tg3.TagGroupCreateNewLabeledTag("files");
-tg3.TagGroupSetIndexedTagAsTagGroup(index, tl2);
-
-TagGroup tl3 = NewTagList();
-tl3.TagGroupInsertTagAsString(infinity(), "a");
-tl3.TagGroupInsertTagAsString(infinity(), "b");
-
-TagGroup tl4 = NewTagList();
-tl4.TagGroupInsertTagAsString(infinity(), "c");
-tl4.TagGroupInsertTagAsNumber(infinity(), 5);
-
-TagGroup tl5 = NewTagList();
-tl5.TagGroupInsertTagAsString(infinity(), "d");
-"""
-
-readvars = {
-    "a": int,
-    "b": "number",
-    "c": "dOuBle",
-    "d": str,
-    "tg1": "TagGroup",
-    "tg3": {
-        "a": "float",
-        "b": float,
-        "files": [str] * len(home_dirs)
-    },
-    "tl3": "TagList",
-    "tl4": [str, int],
-    "tl5": list
-}
-setvars = {
-	"b": -193.3288,
-	"tg4": {
-		"test-key 1": 1,
-		"test-key 2": {
-			"test-key 3": False,
-			"test-key 4": None
+	dialog_script = """
+	number update_task;
+	class ProgressDialog : UIFrame{
+		void updateDialog(object self){
+			number progress;
+			if(GetPersistentTagGroup().TagGroupGetTagAsLong("__progress", progress)){
+				self.DLGSetProgress("progress_bar", progress / 100);
+				self.validateView();
+			}
 		}
-	},
-	"tl6": [
-		"A", "B", ["U", "V"], (-101, -120)
-	]
-}
+		
+		object init(object self){
+			TagGroup Dialog = DLGCreateDialog("Dialog");
 
-with execdmscript.exec_dmscript(script1, script2, script3, 
-								readvars=readvars, setvars=setvars, 
-								debug=False, debug_file=None) as script:
-    for key in script.synchronized_vars.keys():
-        print("Variable '", key, "'")
-        pprint.pprint(script[key])
+			TagGroup progress_bar = DLGCreateProgressBar("progress_bar");
+			progress_bar.DLGInternalpadding(150, 0);
 
-# wrapper = execdmscript.DMScriptWrapper(script1, script2, script3, 
-# 										 readvars=readvars, setvars=setvars)
-#
-# exec_script = wrapper.getExecDMScriptCode()
-#
-# print("The following script is being executed:")
-# print(exec_script)
+			Dialog.DLGAddElement(progress_bar);
+			update_task = AddMainThreadPeriodicTask(self, "updateDialog", 0.1);
+			
+			self.super.init(Dialog);
+			return self;
+		}
+	}
+	// do not move this in the thread part, this will not work anymore
+	object progress_dlg = alloc(ProgressDialog).init();
+	
+	"""
+	exec_script = """
+	if(!GetPersistentTagGroup().TagGroupDoesTagExist("__progress")){
+		GetPersistentTagGroup().TagGroupCreateNewLabeledTag("__progress");
+		GetPersistentTagGroup().TagGroupSetTagAsLong("__progress", 0);
+	}
+	
+	progress_dlg.pose();
+	
+	if(GetPersistentTagGroup().TagGroupDoesTagExist("__progress")){
+		GetPersistentTagGroup().TagGroupDeleteTagWithLabel("__progress");
+	}
+	RemoveMainThreadTask(update_task);
+	"""
+	with exec_dmscript(dialog_script, separate_thread=(exec_script, ), debug=False) as script:
+		pass
+		
+	thread.join()
+except Exception as e:
+	# dm-script error messages are very bad, use this for getting the error text and the 
+	# correct traceback
+	print("Exception: ", e)
+	traceback.print_exc()

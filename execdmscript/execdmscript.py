@@ -7,6 +7,7 @@ import types
 import random
 import typing
 import pathlib
+import collections
 
 try:
     test_error = ModuleNotFoundError()
@@ -115,9 +116,12 @@ _python_dm_type_map = ({
     }
 )
 
-def exec_dmscript(*scripts: typing.Union[str, pathlib.PurePath, typing.Tuple[str, typing.Union[str, pathlib.PurePath]]], 
+Script = typing.Union[str, pathlib.PurePath, typing.Tuple[str, typing.Union[str, pathlib.PurePath]]]
+
+def exec_dmscript(*scripts: Script, 
                   readvars: typing.Optional[dict]=None,
                   setvars: typing.Optional[dict]=None,
+                  separate_thread: typing.Optional[typing.Union[str, pathlib.PurePath, typing.Sequence[Script]]]=None,
                   debug: typing.Optional[bool]=False,
                   debug_file: typing.Optional[typing.Union[str, pathlib.PurePath]]=None):
     """Execute the `scripts` and prepare the `vars` for getting their values.
@@ -191,6 +195,11 @@ def exec_dmscript(*scripts: typing.Union[str, pathlib.PurePath, typing.Tuple[str
         not be declared), the key is the variable name, the value is the value,
         the setvars will automatically be added to the `readvars` if there is
         no conflict (setvars will not overwrite)
+    separate_thread: sequence or str or pathlib.PurePath, Optional
+        Script fragments to execute in a separate thread (thread is created in
+        the dm-script, not in python), this is useful for showing dialogs while 
+        performing python operations, note that this is an executed functions 
+        content on dm-script side so no definitions are allowed, default: None
     debug : boolean, optional
         If True the dm-script will not be executed but written to the 
         `debug_file`, this way errors in the dm-script can be debugged
@@ -206,6 +215,7 @@ def exec_dmscript(*scripts: typing.Union[str, pathlib.PurePath, typing.Tuple[str
     """
 
     return DMScriptWrapper(*scripts, readvars=readvars, setvars=setvars,
+                           separate_thread=separate_thread, 
                            debug=debug, debug_file=debug_file)
 
 def get_dm_type(datatype: typing.Union[str, type], 
@@ -315,7 +325,7 @@ def escape_dm_variable(variable_name: str):
 
     global _replace_dm_variable_name_reg
 
-    name = re.sub(_replace_dm_variable_name_reg, "_", variable_name)
+    name = re.sub(_replace_dm_variable_name_reg, "_", str(variable_name))
 
     if name == "":
         raise ValueError(("The variable name '{}' is not a valid (dm-script) " + 
@@ -351,9 +361,10 @@ class DMScriptWrapper:
     """
 
     def __init__(self,
-                 *scripts: typing.Union[str, pathlib.PurePath, typing.Tuple[str, typing.Union[str, pathlib.PurePath]]], 
+                 *scripts: Script, 
                  readvars: typing.Optional[dict]=None,
                  setvars: typing.Optional[dict]=None,
+                 separate_thread: typing.Optional[typing.Union[str, pathlib.PurePath, typing.Sequence[Script]]]=None,
                  debug: typing.Optional[bool]=False,
                  debug_file: typing.Optional[typing.Union[str, pathlib.PurePath]]=None) -> None:
         """Initialize the script wrapper.
@@ -375,6 +386,12 @@ class DMScriptWrapper:
             must not be declared), the key is the variable name, the value is 
             the value, the setvars will automatically be added to the 
             `readvars` if there is no conflict (setvars will not overwrite)
+        separate_thread: sequence or str or pathlib.PurePath, Optional
+            Script fragments to execute in a separate thread (thread is created 
+            in the dm-script, not in python), this is useful for showing 
+            dialogs while performing python operations, note that this is an 
+            executed functions content on dm-script side so no definitions are 
+            allowed, default: None
         debug : boolean, optional
             If True the dm-script will not be executed but written to the 
             `debug_file`, this way errors in the dm-script can be debugged
@@ -389,6 +406,11 @@ class DMScriptWrapper:
         self.readvars = readvars
         self.setvars = setvars
         self.synchronized_vars = {}
+        self.separate_thread = separate_thread
+        if isinstance(self.separate_thread, str) and self.separate_thread != "":
+            # convert to sequence
+            self.separate_thread = (self.separate_thread, )
+        
         self.debug = bool(debug)
         self.debug_file = debug_file
         self._slash_split_reg = re.compile("(?<!/)/(?!/)")
@@ -517,9 +539,11 @@ class DMScriptWrapper:
             The code to execute
         """
         self._script_sources = []
-        last_pos = 1
+        dmscript = []
+        startpos = 1
 
-        dmscript = [
+        # write some comments
+        code = [
             "// This code is created automatically by concatenating files and ",
             "// code fragments.",
             "// ",
@@ -527,27 +551,17 @@ class DMScriptWrapper:
             "//",
             "//" + " =" * 50
         ]
-        new_pos = last_pos + len(dmscript) - 1
-        self._script_sources.append({
-            "start": last_pos, 
-            "end": new_pos,
-            "origin-name": "<comments>",
-            "origin-detail": None
-        })
-        last_pos = new_pos + 1
+        dmscript, startpos = self._addCode(
+            dmscript, code, "<comments>", None, startpos
+        )
 
-        setvars_code = self.getSetVarsDMCode()
-        dmscript.append(setvars_code)
-
-        new_pos = last_pos + setvars_code.count("\n")
-        self._script_sources.append({
-            "start": last_pos, 
-            "end": new_pos,
-            "origin-name": "<setvars code>",
-            "origin-detail": self.getSetVarsDMCode
-        })
-        last_pos = new_pos + 1
+        # the code for the set variables
+        code = self.getSetVarsDMCode()
+        dmscript, startpos = self._addCode(
+            dmscript, code, "<setvars>", self.getSetVarsDMCode, startpos
+        )
         
+        # add the real code to execute
         for i, (kind, script) in enumerate(self.scripts):
             if isinstance(kind, str):
                 kind = kind.lower()
@@ -561,40 +575,149 @@ class DMScriptWrapper:
                 source = "<inline script in parameter {}>".format(i)
                 comment = "// Directly given script"
                 code = script
-            
-            dmscript.append(comment)
-            new_pos = last_pos + comment.count("\n")
-            self._script_sources.append({
-                "start": last_pos, 
-                "end": new_pos,
-                "origin-name": "<comment>",
-                "origin-detail": None
-            })
-            last_pos = new_pos + 1
 
-            dmscript.append(code)
-            new_pos = last_pos + code.count("\n")
-            self._script_sources.append({
-                "start": last_pos, 
-                "end": new_pos,
-                "origin-name": source,
-                "origin-detail": script
-            })
-            last_pos = new_pos + 1
-        
-        readvars_code = self.getSyncDMCode()
-        dmscript.append(readvars_code)
-        
-        new_pos = last_pos + readvars_code.count("\n")
-        self._script_sources.append({
-            "start": last_pos, 
-            "end": new_pos ,
-            "origin-name": "<readvars code>",
-            "origin-type": self.getSyncDMCode
-        })
-        last_pos = new_pos + 1
+            dmscript, startpos = self._addCode(
+                dmscript, comment, "<comments>", None, startpos
+            )
+            dmscript, startpos = self._addCode(
+                dmscript, code, source, script, startpos
+            )
+
+        # the code for the readvars
+        code = self.getSyncDMCode()
+        dmscript, startpos = self._addCode(
+            dmscript, code, "<readvars>", self.getSyncDMCode, startpos
+        )
+
+        # execute in a separate thread
+        if isinstance(self.separate_thread, collections.Sequence):
+            code = self.getSeparateThreadStartCode()
+            dmscript, startpos = self._addCode(
+                dmscript, code, "<prepare separate thread>", 
+                self.getSeparateThreadStartCode, startpos
+            )
+            
+            for i, (kind, script) in enumerate(DMScriptWrapper.normalizeScripts(self.separate_thread)):
+                if isinstance(kind, str):
+                    kind = kind.lower()
+
+                if kind == "file":
+                    source = script
+                    comment = "// File {}".format(escape_dm_string(source))
+                    with open(script, "r") as f:
+                        code = f.read()
+                elif kind == "script":
+                    source = "<separate_thread parameter {}>".format(i)
+                    comment = "// Directly given script"
+                    code = script
+
+                dmscript, startpos = self._addCode(
+                    dmscript, comment, "<comments>", None, startpos
+                )
+                dmscript, startpos = self._addCode(
+                    dmscript, code, source, script, startpos
+                )
+
+            code = self.getSeparateThreadEndCode()
+            dmscript, startpos = self._addCode(
+                dmscript, code, "<prepare separate thread>", 
+                self.getSeparateThreadEndCode, startpos
+            )
 
         return "\n".join(dmscript)
+    
+    def _addCode(self, dmscript: list, code: typing.Union[list, tuple, str], 
+                 origin_name: str, origin_detail: typing.Any,
+                 startpos: typing.Optional[int]=1) -> typing.Tuple[list, int]:
+        """Add the `code` to the `dmscript` and save its position in 
+        `DMScriptWrapper._script_sources`.
+
+        Parameters
+        ----------
+        dmscript : list
+            The list of code fragments that create the dmscript
+        code : str, list or tuple
+            One or more code fragments to add to the `dmscript`
+        origin_name : str
+            A human readable short name to identify where this code fragment 
+            comes from, this is shown in error messages
+        origin_detail : any
+            The real origin to use in the code to identify (as) exactly (as
+            possible) where the code comes from, this is for programmatic use 
+            only
+        startpos : int, optional
+            The line where the code starts, default: 1
+        
+        Returns
+        -------
+        list, int
+            The dmscript list with the added code fragment at index 0, the 
+            start position of the next code fragment at index 1
+        """
+        # the number of lines (minus one)
+        code_lines = 0
+        if isinstance(code, (list, tuple)):
+            code_lines = sum([c.count("\n") for c in code]) + len(code) - 1
+            dmscript += code
+        elif isinstance(code, str):
+            code_lines = code.count("\n")
+            dmscript.append(code)
+        else:
+            raise ValueError(("The code neither is a list, nor a tuple nor " + 
+                              "nor a string but a '{}' which is not " + 
+                              "supported").format(type(code)))
+
+        self._script_sources.append({
+            "start": startpos, 
+            "end": startpos + code_lines,
+            "origin-name": origin_name,
+            "origin-detail": origin_detail
+        })
+        
+        return dmscript, startpos + code_lines + 1
+    
+    def getSeparateThreadStartCode(self) -> str:
+        """Get the dm-script code for executing the complete script in a 
+        separate thread.
+
+        Note that this needs to surround the complete code. Add the code 
+        returned by `DMScriptWrapper.getSeparateThreadStartCode()` before your
+        code and end it with the code returned by 
+        `DMScriptWrapper.getSeparateThreadEndCode()`.
+
+        Returns
+        -------
+        str
+            The code to append to the dm-script code
+        """
+
+        return "\n".join((
+            "class ExecDMScriptThread{} : Thread{{".format(self._creation_time_id),
+            "void RunThread(object self){"
+        ))
+    
+    def getSeparateThreadEndCode(self) -> str:
+        """Get the dm-script code for executing the complete script in a 
+        separate thread.
+
+        Note that this needs to surround the complete code. Add the code 
+        returned by `DMScriptWrapper.getSeparateThreadStartCode()` before your
+        code and end it with the code returned by 
+        `DMScriptWrapper.getSeparateThreadEndCode()`.
+
+        Returns
+        -------
+        str
+            The code to append to the dm-script code
+        """
+
+        return "\n".join((
+            "}", # end ExecDMScriptThread<id>::RunThread()
+            "}", # end ExecDMScriptThread<id> class
+            "alloc(ExecDMScriptThread{}).StartThread();".format(
+                self._creation_time_id
+            )
+        ))
     
     def getSetVarsDMCode(self) -> str:
         """Get the dm-script code for defining the `setvars`.

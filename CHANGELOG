@@ -1,3 +1,10 @@
+Version 1.0.3
+=============
+
+- Adding `__version__` to module
+- Adding VERSION file
+- Adding `separate_thread` option to allow execution of dm-script in a separate dm-script thread
+  
 Version 1.0.2
 =============
 

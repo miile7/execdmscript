@@ -35,3 +35,5 @@ from .execdmscript import exec_dmscript
 from .execdmscript import get_dm_type
 from .execdmscript import get_python_type
 from .execdmscript import DMScriptWrapper
+
+__version__ = "1.1.0"

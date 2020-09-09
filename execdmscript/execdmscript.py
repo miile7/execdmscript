@@ -583,21 +583,18 @@ class DMScriptWrapper:
                 dmscript, code, source, script, startpos
             )
 
-        # the code for the readvars
-        code = self.getSyncDMCode()
-        dmscript, startpos = self._addCode(
-            dmscript, code, "<readvars>", self.getSyncDMCode, startpos
-        )
-
+        wait_for_signals = []
         # execute in a separate thread
         if isinstance(self.separate_thread, collections.Sequence):
-            code = self.getSeparateThreadStartCode()
-            dmscript, startpos = self._addCode(
-                dmscript, code, "<prepare separate thread>", 
-                self.getSeparateThreadStartCode, startpos
-            )
-            
             for i, (kind, script) in enumerate(DMScriptWrapper.normalizeScripts(self.separate_thread)):
+                wait_for_signals.append(i)
+
+                code = self.getSeparateThreadStartCode(i)
+                dmscript, startpos = self._addCode(
+                    dmscript, code, "<prepare separate thread>", 
+                    self.getSeparateThreadStartCode, startpos
+                )
+
                 if isinstance(kind, str):
                     kind = kind.lower()
 
@@ -618,11 +615,24 @@ class DMScriptWrapper:
                     dmscript, code, source, script, startpos
                 )
 
-            code = self.getSeparateThreadEndCode()
-            dmscript, startpos = self._addCode(
-                dmscript, code, "<prepare separate thread>", 
-                self.getSeparateThreadEndCode, startpos
-            )
+                code = self.getSeparateThreadEndCode(i)
+                dmscript, startpos = self._addCode(
+                    dmscript, code, "<prepare separate thread>", 
+                    self.getSeparateThreadEndCode, startpos
+                )
+        
+        # for i in wait_for_signals:
+        #     code = self.getSeparateThreadWaitCode(i)
+        #     dmscript, startpos = self._addCode(
+        #         dmscript, code, "<wait for signal {}>".format(i), 
+        #         self.getSeparateThreadWaitCode, startpos
+        #     )
+
+        # the code for the readvars
+        code = self.getSyncDMCode()
+        dmscript, startpos = self._addCode(
+            dmscript, code, "<readvars>", self.getSyncDMCode, startpos
+        )
 
         return "\n".join(dmscript)
     
@@ -676,7 +686,7 @@ class DMScriptWrapper:
         
         return dmscript, startpos + code_lines + 1
     
-    def getSeparateThreadStartCode(self) -> str:
+    def getSeparateThreadStartCode(self, index: int) -> str:
         """Get the dm-script code for executing the complete script in a 
         separate thread.
 
@@ -685,6 +695,11 @@ class DMScriptWrapper:
         code and end it with the code returned by 
         `DMScriptWrapper.getSeparateThreadEndCode()`.
 
+        Parameters
+        ----------
+        index : int
+            The thread index
+
         Returns
         -------
         str
@@ -692,11 +707,13 @@ class DMScriptWrapper:
         """
 
         return "\n".join((
-            "class ExecDMScriptThread{} : Thread{{".format(self._creation_time_id),
+            "object thread_cancel_signal{}_{} = NewCancelSignal();".format(self._creation_time_id, index),
+            "object thread_done_signal{}_{} = NewSignal(0);".format(self._creation_time_id, index),
+            "class ExecDMScriptThread{}_{} : Thread{{".format(self._creation_time_id, index),
             "void RunThread(object self){"
         ))
     
-    def getSeparateThreadEndCode(self) -> str:
+    def getSeparateThreadEndCode(self, index: int) -> str:
         """Get the dm-script code for executing the complete script in a 
         separate thread.
 
@@ -705,6 +722,11 @@ class DMScriptWrapper:
         code and end it with the code returned by 
         `DMScriptWrapper.getSeparateThreadEndCode()`.
 
+        Parameters
+        ----------
+        index : int
+            The thread index
+
         Returns
         -------
         str
@@ -712,10 +734,34 @@ class DMScriptWrapper:
         """
 
         return "\n".join((
+            "// inform that the thread is done now",
+            "thread_done_signal{}_{}.setSignal();".format(self._creation_time_id, index),
             "}", # end ExecDMScriptThread<id>::RunThread()
             "}", # end ExecDMScriptThread<id> class
-            "alloc(ExecDMScriptThread{}).StartThread();".format(
-                self._creation_time_id
+            "alloc(ExecDMScriptThread{}_{}).StartThread();".format(
+                self._creation_time_id, index
+            )
+        ))
+    
+    def getSeparateThreadWaitCode(self, index: int) -> str:
+        """Get the dm-script code for waiting to complete all separately 
+        started threads.
+
+        Parameters
+        ----------
+        index : int
+            The thread index
+
+        Returns
+        -------
+        str
+            The code to append to the dm-script code
+        """
+
+        return "\n".join((
+            "// wait for the thread {}".format(index),
+            "thread_done_signal{id}_{i}.WaitOnSignal(infinity(), thread_cancel_signal{id}_{i});".format(
+                id=self._creation_time_id, i=index
             )
         ))
     

@@ -1350,135 +1350,137 @@ class DMScriptWrapper:
                 linearized.TagGroupGetTagAsString("{{available-paths}}" + var_name, available_paths);
             }
 
-            for(number i = 0; i < tg.TagGroupCountTags(); i++){
-                String label;
-                if(tg.TagGroupIsList()){
-                    label = i + "";
-                }
-                else{
-                    label = tg.TagGroupGetTagLabel(i).__exec_dmscript_replace("/", "//");
-                }
-                number type = tg.TagGroupGetTagType(i, 0);
-                string type_name = "";
-                number index;
-                string p = path + "/" + label;
-
-                if(type == 0){
-                    // TagGroup
-                    TagGroup value;
-            
-                    // save the available paths for the next function call
-                    if(!linearized.TagGroupDoesTagExist("{{available-paths}}" + var_name)){
-                        number ind = linearized.TagGroupCreateNewLabeledTag("{{available-paths}}" + var_name);
-                        linearized.TagGroupSetIndexedTagAsString(ind, available_paths);
+            if(tg.TagGroupIsValid()){
+                for(number i = 0; i < tg.TagGroupCountTags(); i++){
+                    String label;
+                    if(tg.TagGroupIsList()){
+                        label = i + "";
                     }
                     else{
-                        linearized.TagGroupSetTagAsString("{{available-paths}}" + var_name, available_paths);
+                        label = tg.TagGroupGetTagLabel(i).__exec_dmscript_replace("/", "//");
+                    }
+                    number type = tg.TagGroupGetTagType(i, 0);
+                    string type_name = "";
+                    number index;
+                    string p = path + "/" + label;
+
+                    if(type == 0){
+                        // TagGroup
+                        TagGroup value;
+                
+                        // save the available paths for the next function call
+                        if(!linearized.TagGroupDoesTagExist("{{available-paths}}" + var_name)){
+                            number ind = linearized.TagGroupCreateNewLabeledTag("{{available-paths}}" + var_name);
+                            linearized.TagGroupSetIndexedTagAsString(ind, available_paths);
+                        }
+                        else{
+                            linearized.TagGroupSetTagAsString("{{available-paths}}" + var_name, available_paths);
+                        }
+                        
+                        tg.TagGroupGetIndexedTagAsTagGroup(i, value);
+                        __exec_dmscript_linearizeTags(linearized, value, var_name, p);
+
+                        // there may have been added some paths
+                        if(linearized.TagGroupDoesTagExist("{{available-paths}}" + var_name)){
+                            linearized.TagGroupGetTagAsString("{{available-paths}}" + var_name, available_paths);
+                        }
+                                
+                        if(value.TagGroupIsList()){
+                            type_name = "TagList";
+                        }
+                        else{
+                            type_name = "TagGroup";
+                        }
+                    }
+                    else if(type == 2){
+                        // tag is a short
+                        number value
+
+                        tg.TagGroupGetIndexedTagAsShort(i, value)
+                        index = linearized.TagGroupCreateNewLabeledTag(p);
+                        linearized.TagGroupSetIndexedTagAsShort(index, value);
+                        type_name = "Short";
+                    }
+                    else if(type == 3){
+                        // tag is a long
+                        number value
+
+                        tg.TagGroupGetIndexedTagAsLong(i, value)
+                        index = linearized.TagGroupCreateNewLabeledTag(p);
+                        linearized.TagGroupSetIndexedTagAsLong(index, value);
+                        type_name = "Long";
+                    }
+                    else if(type == 4){
+                        number value;
+                        
+                        tg.TagGroupGetIndexedTagAsUInt16(index, value);
+                        index = linearized.TagGroupCreateNewLabeledTag(p);
+                        linearized.TagGroupSetIndexedTagAsUInt16(index, value);
+                        type_name = "UInt16";
+                    }
+                    else if(type == 5){
+                        number value;
+                        
+                        tg.TagGroupGetIndexedTagAsUInt32(index, value);
+                        index = linearized.TagGroupCreateNewLabeledTag(p);
+                        linearized.TagGroupSetIndexedTagAsUInt32(index, value);
+                        type_name = "UInt32";
+                    }
+                    else if(type == 6){
+                        // tag is a float
+                        number value
+
+                        tg.TagGroupGetIndexedTagAsFloat(i, value)
+                        index = linearized.TagGroupCreateNewLabeledTag(p);
+                        linearized.TagGroupSetIndexedTagAsFloat(index, value);
+                        type_name = "Float";
+                    }
+                    else if(type == 7){
+                        // tag is a double
+                        number value
+
+                        tg.TagGroupGetIndexedTagAsDouble(i, value)
+                        index = linearized.TagGroupCreateNewLabeledTag(p);
+                        linearized.TagGroupSetIndexedTagAsDouble(index, value);
+                        type_name = "Double";
+                    }
+                    else if(type == 8){
+                        // tag is a boolean
+                        number value
+
+                        tg.TagGroupGetIndexedTagAsBoolean(i, value)
+                        index = linearized.TagGroupCreateNewLabeledTag(p);
+                        linearized.TagGroupSetIndexedTagAsBoolean(index, value);
+                        type_name = "Boolean";
+                    }
+                    // skip type=15, this is more complicated types like rgbnumber, 
+                    // shortpoint, longpoint, floatcomplex, doublecomplex, and
+                    // shortrect, longrect and float rect
+                    else if(type == 20){
+                        // tag is a string
+                        string value
+
+                        tg.TagGroupGetIndexedTagAsString(i, value)
+                        index = linearized.TagGroupCreateNewLabeledTag(p);
+                        linearized.TagGroupSetIndexedTagAsString(index, value);
+                        type_name = "String";
                     }
                     
-                    tg.TagGroupGetIndexedTagAsTagGroup(i, value);
-                    __exec_dmscript_linearizeTags(linearized, value, var_name, p);
+                    if(type_name != ""){
+                        index = linearized.TagGroupCreateNewLabeledTag("{{type}}" + p);
+                        linearized.TagGroupSetIndexedTagAsString(index, type_name);
 
-                    // there may have been added some paths
-                    if(linearized.TagGroupDoesTagExist("{{available-paths}}" + var_name)){
-                        linearized.TagGroupGetTagAsString("{{available-paths}}" + var_name, available_paths);
+                        available_paths += p + ";";
                     }
-                            
-                    if(value.TagGroupIsList()){
-                        type_name = "TagList";
-                    }
-                    else{
-                        type_name = "TagGroup";
-                    }
-                }
-                else if(type == 2){
-                    // tag is a short
-                    number value
-
-                    tg.TagGroupGetIndexedTagAsShort(i, value)
-                    index = linearized.TagGroupCreateNewLabeledTag(p);
-                    linearized.TagGroupSetIndexedTagAsShort(index, value);
-                    type_name = "Short";
-                }
-                else if(type == 3){
-                    // tag is a long
-                    number value
-
-                    tg.TagGroupGetIndexedTagAsLong(i, value)
-                    index = linearized.TagGroupCreateNewLabeledTag(p);
-                    linearized.TagGroupSetIndexedTagAsLong(index, value);
-                    type_name = "Long";
-                }
-                else if(type == 4){
-                    number value;
-                    
-                    tg.TagGroupGetIndexedTagAsUInt16(index, value);
-                    index = linearized.TagGroupCreateNewLabeledTag(p);
-                    linearized.TagGroupSetIndexedTagAsUInt16(index, value);
-                    type_name = "UInt16";
-                }
-                else if(type == 5){
-                    number value;
-                    
-                    tg.TagGroupGetIndexedTagAsUInt32(index, value);
-                    index = linearized.TagGroupCreateNewLabeledTag(p);
-                    linearized.TagGroupSetIndexedTagAsUInt32(index, value);
-                    type_name = "UInt32";
-                }
-                else if(type == 6){
-                    // tag is a float
-                    number value
-
-                    tg.TagGroupGetIndexedTagAsFloat(i, value)
-                    index = linearized.TagGroupCreateNewLabeledTag(p);
-                    linearized.TagGroupSetIndexedTagAsFloat(index, value);
-                    type_name = "Float";
-                }
-                else if(type == 7){
-                    // tag is a double
-                    number value
-
-                    tg.TagGroupGetIndexedTagAsDouble(i, value)
-                    index = linearized.TagGroupCreateNewLabeledTag(p);
-                    linearized.TagGroupSetIndexedTagAsDouble(index, value);
-                    type_name = "Double";
-                }
-                else if(type == 8){
-                    // tag is a boolean
-                    number value
-
-                    tg.TagGroupGetIndexedTagAsBoolean(i, value)
-                    index = linearized.TagGroupCreateNewLabeledTag(p);
-                    linearized.TagGroupSetIndexedTagAsBoolean(index, value);
-                    type_name = "Boolean";
-                }
-                // skip type=15, this is more complicated types like rgbnumber, 
-                // shortpoint, longpoint, floatcomplex, doublecomplex, and
-                // shortrect, longrect and float rect
-                else if(type == 20){
-                    // tag is a string
-                    string value
-
-                    tg.TagGroupGetIndexedTagAsString(i, value)
-                    index = linearized.TagGroupCreateNewLabeledTag(p);
-                    linearized.TagGroupSetIndexedTagAsString(index, value);
-                    type_name = "String";
                 }
                 
-                if(type_name != ""){
-                    index = linearized.TagGroupCreateNewLabeledTag("{{type}}" + p);
-                    linearized.TagGroupSetIndexedTagAsString(index, type_name);
-
-                    available_paths += p + ";";
+                if(!linearized.TagGroupDoesTagExist("{{available-paths}}" + var_name)){
+                    number ind = linearized.TagGroupCreateNewLabeledTag("{{available-paths}}" + var_name);
+                    linearized.TagGroupSetIndexedTagAsString(ind, available_paths);
                 }
-            }
-            
-            if(!linearized.TagGroupDoesTagExist("{{available-paths}}" + var_name)){
-                number ind = linearized.TagGroupCreateNewLabeledTag("{{available-paths}}" + var_name);
-                linearized.TagGroupSetIndexedTagAsString(ind, available_paths);
-            }
-            else{
-                linearized.TagGroupSetTagAsString("{{available-paths}}" + var_name, available_paths);
+                else{
+                    linearized.TagGroupSetTagAsString("{{available-paths}}" + var_name, available_paths);
+                }
             }
         }
         """

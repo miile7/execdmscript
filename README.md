@@ -7,6 +7,15 @@ A Python module for executing DM-Script from Python in
 
 1. [Foreword](#foreword)
 2. [Usage](#usage)
+	1. [Step by step examples](#step-by-step-examples)
+		1. [Hello world](#example-0-hello-world)
+		2. [Getting started](#example-1-getting-started)
+		3. [Outhouse code](#example-2-outhouse-code)
+		4. [TagGroups and TagLists](#example-3-taggroups-and-taglists)
+		5. [Debug your code](#example-4-debug-your-code)
+		6. [Multiple scripts](#example-5-multiple-scripts)
+		7. [More examples](#more-examples)
+	2. [One glance example](#one-glance-example)
 3. [Installation](#installation)
 4. [License and Publications](#license-and-publications)
 
@@ -318,7 +327,7 @@ This code will not execute dm-script code! But it will instead create the file a
 `readvars` need to work. This way you may find and fix bugs. Note that the `debug_file` 
 is ignored when `debug` is not `True`.
 
-#### Example 5: Multiple Scripts
+#### Example 5: Multiple scripts
 
 Sometimes it is useful to structure your dm-script code too, especially if you have bigger
 files to include. You can add as many dm-scripts directly or as files as you want. Note 

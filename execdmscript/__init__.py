@@ -31,9 +31,6 @@ This uses the persistent tags to communicate from dm-script to python.
 Note that this is not thread-safe!
 """
 
-from .execdmscript import exec_dmscript
-from .execdmscript import get_dm_type
-from .execdmscript import get_python_type
-from .execdmscript import DMScriptWrapper
+from .execdmscript import *
 
-__version__ = "1.1.2"
+__version__ = "1.1.3"

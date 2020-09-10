@@ -218,6 +218,88 @@ def exec_dmscript(*scripts: Script,
                            separate_thread=separate_thread, 
                            debug=debug, debug_file=debug_file)
 
+def convert_to_taggroup(tags: typing.Union[typing.Dict[str, Convertable], 
+                                           typing.List[Convertable], 
+                                           typing.Tuple[Convertable, ...]],
+                        path: typing.Optional[list]=[]) -> DM.Py_TagGroup:
+    """Convert the given `tags` to a DigitalMicrograph `TagGroup`.
+
+    Note that this function can be used to set tags of images easily. Create 
+    the `TagGroup` with this function, then copy the tags to the image 
+    `TagGroup`.
+
+    See
+    ---
+    DigitalMicrograph.Py_TagGroup.CopyTagsFrom()
+
+    Raises
+    ------
+    ValueError
+        When one of the tags contents is not convertable.
+
+    Parameters
+    ----------
+    tags : dict, list or tuple
+        A dict, list or tuple that can contain the basic types int, float, 
+        bool, str or None or dicts, lists or tuples of the same kind
+    path : list, optional
+        The path of the keys, this is for the error message only, do not 
+        set this, default: []
+    
+    Returns
+    -------
+    DM.Py_TagGroup
+        The tag group object
+    """
+
+    if isinstance(tags, (list, tuple)):
+        datatype = list
+        iterator = enumerate(tags)
+        tag_group = DM.NewTagList()
+    else:
+        datatype = dict
+        iterator = tags.items()
+        tag_group = DM.NewTagGroup()
+    
+    for key, value in iterator:
+        if isinstance(value, int):
+            if datatype == list:
+                tag_group.InsertTagAsLong(key, value)
+            else:
+                tag_group.SetTagAsLong(key, value)
+        elif isinstance(value, float):
+            if datatype == list:
+                tag_group.InsertTagAsFloat(key, value)
+            else:
+                tag_group.SetTagAsFloat(key, value)
+        elif isinstance(value, bool):
+            if datatype == list:
+                tag_group.InsertTagAsBool(key, value)
+            else:
+                tag_group.SetTagAsBoolean(key, value)
+        elif isinstance(value, str):
+            if datatype == list:
+                tag_group.InsertTagAsString(key, value)
+            else:
+                tag_group.SetTagAsString(key, value)
+        elif isinstance(value, (dict, list, tuple)):
+            value = convert_to_taggroup(value, path + [key])
+            if datatype == list:
+                tag_group.InsertTagAsTagGroup(key, value)
+            else:
+                tag_group.SetTagAsTagGroup(key, value)
+        elif value is None:
+            if datatype == list:
+                tag_group.InsertTagAsShort(key, 0)
+            else:
+                tag_group.SetTagAsShort(key, 0)
+        else:
+            raise ValueError(("The type {} of the tag value of {} is not " + 
+                              "supported. Use int, float, bool, str or None " + 
+                              "instead.").format(type(value), ":".join(path)))
+        
+    return tag_group
+
 def get_dm_type(datatype: typing.Union[str, type], 
                 for_taggroup: typing.Optional[bool]=False):
     """Get the dm-script equivalent for the given `datatype`.

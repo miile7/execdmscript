@@ -161,6 +161,12 @@ def exec_dmscript(*scripts: Script,
     mechanism is not. This means you can use any typing as the key but you can 
     only get the value (on python side) with this exact typing.
 
+    Note that there are some variables that will be accessable in the dm-script
+    even if no `setvars` are given. Those are:
+    - `__file__`, string: the location of the dm-script file if the `scripts`
+      is a file path, otherwise it will be "<inline>", this is updated for 
+      every included file
+
     Example
     -------
     >>> prefix = "\n".join((
@@ -644,26 +650,39 @@ class DMScriptWrapper:
         )
         
         # add the real code to execute
+        dm_file_added = False
         for i, (kind, script) in enumerate(self.scripts):
             if isinstance(kind, str):
                 kind = kind.lower()
 
             if kind == "file":
                 source = script
+                dm__file__ = script
                 comment = "// File {}".format(escape_dm_string(source))
                 with open(script, "r") as f:
                     code = f.read()
             elif kind == "script":
                 source = "<inline script in parameter {}>".format(i)
                 comment = "// Directly given script"
+                dm__file__ = "<inline>"
                 code = script
 
+            dmscript, startpos = self._addCode(
+                dmscript, 
+                DMScriptWrapper.getDMCodeForVariable("__file__", dm__file__, not dm_file_added), 
+                "<__file__>", 
+                None, 
+                startpos
+            )
             dmscript, startpos = self._addCode(
                 dmscript, comment, "<comments>", None, startpos
             )
             dmscript, startpos = self._addCode(
                 dmscript, code, source, script, startpos
             )
+
+            if not dm_file_added:
+                dm_file_added = True
 
         wait_for_signals = []
         # execute in a separate thread
@@ -1269,7 +1288,8 @@ class DMScriptWrapper:
             )
     
     @staticmethod
-    def getDMCodeForVariable(name: str, value: Convertable):
+    def getDMCodeForVariable(name: str, value: Convertable, 
+                             declare_type: typing.Optional[bool]=True):
         """Create the dm-script code for defining and declaring a variable.
 
         Parameters
@@ -1279,6 +1299,8 @@ class DMScriptWrapper:
             start with a digit
         value : int, float, str, boolean, dict, list, tuple or None
             The value to set
+        declare_type : bool, optional
+            Whether to declare the type or not, default: True
         
         Returns
         -------
@@ -1291,20 +1313,28 @@ class DMScriptWrapper:
         dm_type = get_dm_type(py_type, for_taggroup=False)
 
         if py_type in (dict, list, tuple):
-            dmscript += DMScriptWrapper._getTagGroupDMCodeForVariable(name, value)
+            dmscript += DMScriptWrapper._getTagGroupDMCodeForVariable(
+                name, value, declare_type
+            )
         else:
             if isinstance(value, str):
                 value = "\"{}\"".format(escape_dm_string(value))
             
-            dmscript.append("{} {} = {};".format(dm_type, 
-                                                 escape_dm_variable(name), 
-                                                 value))
+            if declare_type:
+                line = "{type} {var} = {val};"
+            else:
+                line = "{var} = {val};"
+            
+            dmscript.append(line.format(type=dm_type, 
+                                        var=escape_dm_variable(name), 
+                                        val=value))
         
         return "\n".join(dmscript)
     
     @staticmethod
     def _getTagGroupDMCodeForVariable(name: str, 
-                                      value: Convertable, 
+                                      value: Convertable,
+                                      declare_type: typing.Optional[bool]=True,
                                       prefix: typing.Optional[str]="",
                                       depth: typing.Optional[int]=0):
         """Create the dm-script code for defining and declaring a `TagGroup` or
@@ -1317,6 +1347,12 @@ class DMScriptWrapper:
             start with a digit
         value : dict, list, tuple
             The dict, list or tuple to express as a `TagGroup` or `TagList`
+        declare_type : bool, optional
+            Whether to declare the type or not, default: True
+        prefix : str, optional
+            A prefix to add before the `TagGroup` variable name
+        depth : int, optional
+            The current depth
         
         Returns
         -------
@@ -1336,9 +1372,14 @@ class DMScriptWrapper:
             iterator = enumerate(value)
         
         # set variable
-        dmscript.append("{} {} = {};".format(dm_type, 
-                                             escape_dm_variable(prefix + name), 
-                                             creator))
+        if declare_type:
+            line = "{type} {var} = {val};"
+        else:
+            line = "{var} = {val};"
+        
+        dmscript.append(line.format(type=dm_type, 
+                                    var=escape_dm_variable(prefix + name), 
+                                    val=creator))
 
         index = None
         if py_type == dict:
@@ -1372,7 +1413,7 @@ class DMScriptWrapper:
                 p = "__exec_dmscript_"
                 n = "{}_tg_{}_{}".format(escape_dm_variable(name), i, depth + 1)
                 dmscript += DMScriptWrapper._getTagGroupDMCodeForVariable(
-                    n, value, p, depth + 1
+                    n, value, True, p, depth + 1
                 )
                 # rewrite the value to the variable name of the TagGroup or 
                 # TagList that now exists

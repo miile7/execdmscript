@@ -443,10 +443,12 @@ def escape_dm_string(str_content: str):
             .replace("\t", "\\t")
             .replace("\0", "\\0"))
 
-
 class DMScriptWrapper:
     """Wraps one or more dm-scripts.
     """
+
+    debug_start_marker = "@execdmscript.ignore.start"
+    debug_end_marker = "@execdmscript.ignore.end"
 
     def __init__(self,
                  *scripts: Script, 
@@ -675,10 +677,10 @@ class DMScriptWrapper:
                 startpos
             )
             dmscript, startpos = self._addCode(
-                dmscript, comment, "<comments>", None, startpos
+                dmscript, comment, "<comments>", None, startpos, True
             )
             dmscript, startpos = self._addCode(
-                dmscript, code, source, script, startpos
+                dmscript, code, source, script, startpos, True
             )
 
             if not dm_file_added:
@@ -708,6 +710,8 @@ class DMScriptWrapper:
                     source = "<separate_thread parameter {}>".format(i)
                     comment = "// Directly given script"
                     code = script
+                
+                code = code.encode("iso-8859-1")
 
                 dmscript, startpos = self._addCode(
                     dmscript, comment, "<comments>", None, startpos
@@ -739,9 +743,15 @@ class DMScriptWrapper:
     
     def _addCode(self, dmscript: list, code: typing.Union[list, tuple, str], 
                  origin_name: str, origin_detail: typing.Any,
-                 startpos: typing.Optional[int]=1) -> typing.Tuple[list, int]:
+                 startpos: typing.Optional[int]=1,
+                 remove_debug_lines: typing.Optional[bool]=True) -> typing.Tuple[list, int]:
         """Add the `code` to the `dmscript` and save its position in 
         `DMScriptWrapper._script_sources`.
+
+        Raises
+        ------
+        ValueError
+            When the `code` neither is a string nor a list nor a tuple
 
         Parameters
         ----------
@@ -758,6 +768,9 @@ class DMScriptWrapper:
             only
         startpos : int, optional
             The line where the code starts, default: 1
+        remove_debug_lines : bool, optional
+            Whether to remove all lines between the debug start marker and the
+            debug end marker
         
         Returns
         -------
@@ -765,18 +778,35 @@ class DMScriptWrapper:
             The dmscript list with the added code fragment at index 0, the 
             start position of the next code fragment at index 1
         """
+
         # the number of lines (minus one)
         code_lines = 0
         if isinstance(code, (list, tuple)):
             code_lines = sum([c.count("\n") for c in code]) + len(code) - 1
-            dmscript += code
+            code = "\n".join(code)
         elif isinstance(code, str):
             code_lines = code.count("\n")
-            dmscript.append(code)
         else:
             raise ValueError(("The code neither is a list, nor a tuple nor " + 
                               "nor a string but a '{}' which is not " + 
                               "supported").format(type(code)))
+
+        if remove_debug_lines:
+            comment_lines = False
+            lines = code.split("\n")
+            for i, line in enumerate(lines):
+                if DMScriptWrapper.debug_start_marker in line:
+                    comment_lines = True
+                
+                if comment_lines:
+                    lines[i] = "// " + line
+                
+                if DMScriptWrapper.debug_end_marker in line:
+                    comment_lines = False
+            
+            code = "\n".join(lines)
+
+        dmscript.append(code)
 
         self._script_sources.append({
             "start": startpos, 

@@ -327,6 +327,53 @@ This code will not execute dm-script code! But it will instead create the file a
 `readvars` need to work. This way you may find and fix bugs. Note that the `debug_file` 
 is ignored when `debug` is not `True`.
 
+To be able to run the code with and without python, one can use the start and end markers
+to tell `execdmscript` to ignore the current part. In fact, this part will simply be 
+commented out before execution. 
+
+Create the following code and save it as `C:\testdmscript4.2.s`.
+
+```c
+// @execdmscript.ignore.start
+// all the code here will never be executed except this
+// dm-script code is executed manually
+string variable1 = "Test";
+number variable2 = 1;
+result("This will not be printed when executed via python.\n")
+// @execdmscript.ignore.end
+
+result(variable1 + "\n");
+result(variable2 + "\n");
+
+// @execdmscript.ignore.start
+result("Ignored again")
+// @execdmscript.ignore.end
+```
+
+This is a valid dm-script file. It can be executed as it is. But as the comment already 
+sais, the python execution via `execdmscript` will not see the lines between 
+`@execdmscript.ignore.start` and `@execdmscript.ignore.end`.
+
+One can see this by executing the above file in GMS. Then create the following python file
+and execute it in GMS.
+
+```python
+import execdmscript
+
+# Tell the dm-script the variables it should know
+setvars = {"variable1": "Executed from python", "variable2": 99999}
+
+# set your filepath, needs to be the complete path, not just the name!
+path = r"C:\testdmscript4.2.s"
+
+with execdmscript.exec_dmscript(path, setvars=setvars):
+	pass
+```
+
+The variables have the values as defined in python. But there is no error, even though 
+the variables were defined already. In addition, the `result()` function calls between 
+the ignore markers are not executed.
+
 #### Example 5: Multiple scripts
 
 Sometimes it is useful to structure your dm-script code too, especially if you have bigger

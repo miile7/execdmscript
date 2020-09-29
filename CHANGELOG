@@ -3,6 +3,8 @@ Version 1.1.4
 
 - Adding `__file__` variable is now always given in dm-script containing the current dm-script file
   path
+- Adding ingore markers `@execdmscript.ignore.start` and `@execdmscript.ignore.end` to allow code 
+  that is only executed in direct dm-script calls
 
 Version 1.1.3
 =============

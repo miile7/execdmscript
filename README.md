@@ -18,7 +18,8 @@ A Python module for executing DM-Script from Python in
 	2. [One glance example](#one-glance-example)
 	3. [Helper functions](#helper-functions)
 		1. [Type mapping](#type-mapping)
-		2. [Converting TagGroups](#converting-taggroups)
+		2. [Escaping code](#escaping-code)
+		3. [Converting TagGroups](#converting-taggroups)
 3. [Installation](#installation)
 4. [License and Publications](#license-and-publications)
 
@@ -494,6 +495,41 @@ execdmscript.get_python_type("TagList") # returns <class 'list'>
 The `get_dm_type()` supports the `for_taggroup` parameter. This toggles whether the 
 returned string can be used in `TagGroupSetTagAs...()` or if it is the type definition to 
 create a new variable in dm-script.
+
+#### Escaping code
+
+When creating dm-script code dynamically, which is often the case when using dm-script 
+code form Python, there can be problems with escaping. For this `execdmscript` contains 
+the `escape_dm_string()` function. This function escapes strings that should be included
+in a string in dm-script. The `escape_dm_variable()` function escapes variable names in 
+a way that they are allowed in dm-script code.
+
+```python
+import execdmscript
+
+var = "invalid variable name"
+text = """This is "a"
+very
+problematic text"""
+
+var = execdmscript.escape_dm_variable(var)
+text = execdmscript.escape_dm_string(text)
+
+dm_code = "string {} = \"{}\"".format(var, text)
+
+print(dm_code)
+```
+
+Using those two functions changes the dm-script code form (without escaping)
+```C
+string invalid variable name = "This is "a"
+very
+problematic text"
+```
+to the valid dm-script code
+```C
+string invalid_variable_name = "This is \"a\"\nvery\nproblematic text"
+```
 
 #### Converting TagGroups
 

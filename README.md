@@ -16,6 +16,7 @@ A Python module for executing DM-Script from Python in
 		6. [Multiple scripts](#example-5-multiple-scripts)
 		7. [More examples](#more-examples)
 	2. [One glance example](#one-glance-example)
+	3. [Helper functions](#helper-functions)
 3. [Installation](#installation)
 4. [License and Publications](#license-and-publications)
 
@@ -451,6 +452,46 @@ except Exception as e:
 	import traceback
 	traceback.print_exc()
 ```
+
+### Helper functions
+
+`execdmscript` defines some helper functions. Those provide often used and needed 
+functions related to executing dm-script code from Python.
+
+#### Type mapping
+
+To find the Python type for a dm-script type or the other way around, `execdmscript` 
+provides the `get_dm_type()` and the `get_python_type()` functions. Both functions take 
+a "type expression" and return the corresponding type in the specified language. The 
+`get_dm_type()` takes a python type and returns the type for dm-script, `get_python_type()`
+takes the dm-script type and returns the python type.
+
+`get_python_type()` will return a python `type` object and take strings as arguments. 
+`get_dm_type()` takes both, strings and python `type` objects and returns strings.
+
+The following example shows the usage:
+
+```python
+import execdmscript
+
+execdmscript.get_dm_type(int) # returns "number"
+execdmscript.get_dm_type(str) # returns "string"
+execdmscript.get_dm_type("text") # returns "string"
+execdmscript.get_dm_type(list) # returns "TagGroup"
+execdmscript.get_dm_type(dict) # returns "TagGroup"
+
+execdmscript.get_dm_type(bool, for_taggroup=False) # returns "number"
+execdmscript.get_dm_type(bool, for_taggroup=True) # returns "Boolean"
+
+execdmscript.get_python_type("int") # returns <class 'int'>
+execdmscript.get_python_type("Integer") # returns <class 'int'>
+execdmscript.get_python_type("TagGroup") # returns <class 'dict'>
+execdmscript.get_python_type("TagList") # returns <class 'list'>
+```
+
+The `get_dm_type()` supports the `for_taggroup` parameter. This toggles whether the 
+returned string can be used in `TagGroupSetTagAs...()` or if it is the type definition to 
+create a new variable in dm-script.
 
 ### Example execution without installation
 

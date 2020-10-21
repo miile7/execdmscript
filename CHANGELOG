@@ -5,6 +5,12 @@ Version 1.1.4
   path
 - Adding ingore markers `@execdmscript.ignore.start` and `@execdmscript.ignore.end` to allow code 
   that is only executed in direct dm-script calls
+- Adding `convert_from_taggroup()` function that converts `DigitalMicrograph.Py_TagGroup` to 
+  `dict`s, `list`s which is the opposite function to `convert_to_taggroup()`
+- Adding helper documentation in README
+- Adding examples for `get_dm_type()` and `get_python_type()`
+- Adding examples for `escape_dm_variable()` and `escape_dm_string()`
+- Adding examples for `convert_from_taggroup()` and `convert_to_taggroup()`
 
 Version 1.1.3
 =============

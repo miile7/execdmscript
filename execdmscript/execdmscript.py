@@ -236,6 +236,7 @@ def convert_to_taggroup(tags: typing.Union[typing.Dict[str, Convertable],
 
     See
     ---
+    convert_from_taggroup()
     DigitalMicrograph.Py_TagGroup.CopyTagsFrom()
 
     Raises
@@ -305,6 +306,50 @@ def convert_to_taggroup(tags: typing.Union[typing.Dict[str, Convertable],
                               "instead.").format(type(value), ":".join(path)))
         
     return tag_group
+
+def convert_from_taggroup(taggroup: DM.Py_TagGroup) -> typing.Union[list, dict]:
+    """Convert the given DigitalMicrograph `taggroup` to a dict or list.
+
+    Note that this function cannot be used to convert global tags. This can 
+    only be used for `Py_TagGroup` objects created in the python code. 
+    Otherwise the reference to the `TagGroup` object is somehow lost.
+
+    See
+    ---
+    convert_to_taggroup()
+
+    Parameters
+    ----------
+    taggroup : DigitalMicrograph.Py_TagGroup
+        The `TagGroup` object created in python
+    
+    Returns
+    -------
+    dict, list
+        A dict or list representing the tag group, the type depends on the 
+        `TagGroup.IsList()` return value
+    """
+
+    tg_type = list if taggroup.IsList() else dict
+    tg_name = "convert_tg_{}".format(int(time.time() * 100))
+
+    # save tag group to persistent tags to pass them to dm-script
+    DM.GetPersistentTagGroup().SetTagAsTagGroup(tg_name, taggroup)
+
+    # copy the tag group to a local variable to sync that variable back to 
+    # python
+    dm_code = "\n".join((
+        "TagGroup {};".format(tg_name),
+        "GetPersistentTagGroup().TagGroupGetTagAsTagGroup(\"{}\", {});".format(tg_name, tg_name)
+    ))
+    
+    with exec_dmscript(dm_code, readvars={tg_name: tg_type}) as script:
+        return script[tg_name]
+    
+    raise RuntimeError(
+        ("Could not find the TagGroup {} in synchronized the dm-script code " + 
+         "that was used to convert a TagGroup to a dict or list.").format(tg_name)
+    )
 
 def get_dm_type(datatype: typing.Union[str, type], 
                 for_taggroup: typing.Optional[bool]=False):

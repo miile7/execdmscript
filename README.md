@@ -17,6 +17,8 @@ A Python module for executing DM-Script from Python in
 		7. [More examples](#more-examples)
 	2. [One glance example](#one-glance-example)
 	3. [Helper functions](#helper-functions)
+		1. [Type mapping](#type-mapping)
+		2. [Converting TagGroups](#converting-taggroups)
 3. [Installation](#installation)
 4. [License and Publications](#license-and-publications)
 
@@ -492,6 +494,137 @@ execdmscript.get_python_type("TagList") # returns <class 'list'>
 The `get_dm_type()` supports the `for_taggroup` parameter. This toggles whether the 
 returned string can be used in `TagGroupSetTagAs...()` or if it is the type definition to 
 create a new variable in dm-script.
+
+#### Converting TagGroups
+
+To convert dm-script `TagGroup`s from and to `dict`s or `list`s, `execdmscript` offers the 
+`convert_to_taggroup()` and the `convert_from_taggroup()` functions. Note that those 
+functions only work with `TagGroup`s created in Python. Persistent tags are not supported.
+Copying persitent tags to a local variable is not possible (GMS 3.4).
+
+`convert_from_taggroup()` takes a `Py_TagGroup` as a parameter and returns a dict or list.
+Nested `TagGroup`s are supported. The following example shows the usage:
+```python
+import pprint
+import DigitalMicrograph as DM
+import execdmscript
+
+# create a test TagGroup
+taggroup = DM.NewTagGroup()
+taggroup.SetTagAsString("key1", "First text value")
+taggroup.SetTagAsFloat("key2", -823.83)
+
+taggroup2 = DM.NewTagGroup()
+taggroup2.SetTagAsString("inner-key1", "Another text")
+taggroup2.SetTagAsBoolean("inner-key2", False)
+taggroup.SetTagAsTagGroup("key3", taggroup2)
+
+taggroup3 = DM.NewTagList()
+taggroup3.InsertTagAsText(0, "Value in list")
+taggroup3.InsertTagAsText(1, "Next value in list")
+taggroup3.InsertTagAsLong(2, 1234)
+taggroup.SetTagAsTagGroup("key4", taggroup3)
+
+# convert to a dict
+dict_data = execdmscript.convert_from_taggroup(taggroup)
+# show the converted dict
+pprint.pprint(dict_data)
+
+# convert to a list
+list_data = execdmscript.convert_from_taggroup(taggroup3)
+pprint.pprint(list_data)
+```
+
+`convert_to_taggroup()` is the opposite of `convert_from_taggroup()`. It takes a python
+(nested) `dict` or `list` and creates a `Py_TagGroup`.
+
+```python
+import DigitalMicrograph as DM
+import execdmscript
+
+data = {
+	'key1': 'First text value',
+	'key2': -823.8300170898438,
+	'key3': {'inner-key1': 'Another text', 'inner-key2': False},
+	'key4': ['Value in list', 'Next value in list', 1234]
+}
+
+taggroup = execdmscript.convert_to_taggroup(data)
+
+taggroup.OpenBrowserWindow(False)
+```
+
+The following code shows an example application. It allows to modify image tags by the 
+user. Since `TagGroup`s cannot be travelled through in Python code, this is the only 
+possibility to show the current tag structure (which is unknown because it comes from the 
+camera) to the user. Adding tags shows another example for the use of 
+`execdmscript.exec_dm_script()`.
+
+```python
+try:
+	import time
+	import pprint
+	import numpy as np
+	import DigitalMicrograph as DM
+	import execdmscript
+	
+	def recordImage() -> DM.Py_Image:
+		"""Record an image with the attatched camera.
+		
+		This is a dummy implementation and creates a random
+		image with random tags.
+		"""
+		
+		# create random data within [0..255]
+		img_data = np.random.rand(64, 64)
+		img_data = (img_data * 255).astype(np.uint8)
+
+		# create Py_Image
+		img = DM.CreateImage(img_data)
+		# set some tags
+		img.GetTagGroup().SetTagAsFloat("Acquire time", time.time())
+		
+		return img
+	
+	# record the image
+	img = recordImage()
+	
+	# the tags to set to the image
+	tags = {}
+	# prepare a dialog
+	dm_code = "number add_tag = TwoButtonDialog(\"Do you want to add more tags?\\nCurrent Tags:\\n{}\", \"Add Tag\", \"Done\");"
+	# whether to add another tag
+	add_tag = True
+	while add_tag:
+		# ask for the tag name and value
+		tag_name = input("Please enter a tag name to add to the image")
+		tag_value = input("Please enter the value for the tag '{}'".format(tag_name))
+		
+		tags[tag_name] = tag_value
+		
+		# format the current tags, escape quotes to prevent destroying the string in 
+		# the dm-script code
+		tag_str = execdmscript.escape_dm_string(pprint.pformat(tags))
+		
+		# ask whether to add another tag
+		add_tag = False
+		with execdmscript.exec_dmscript(dm_code.format(tag_str), readvars={"add_tag": int}) as script:
+			add_tag = script["add_tag"]
+	
+	# convert the tags to a tag group object
+	tags = execdmscript.convert_to_taggroup(tags)
+	# apply the tag group object to the image
+	img.GetTagGroup().DeleteAllTags()
+	img.GetTagGroup().CopyTagsFrom(tags)
+	
+	img.ShowImage()
+except Exception as e:
+	# dm-script error messages only show the error type but not the message
+	print("Exception: ", e)
+
+	import traceback
+	traceback.print_exc()
+```
 
 ### Example execution without installation
 

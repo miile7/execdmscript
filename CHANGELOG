@@ -1,3 +1,15 @@
+Version 1.1.5
+=============
+
+- Adding `invalid_taggroup_key_characters` tuple that contains character that are invalid for 
+  DigitalMicrograph TagGroup key names
+- Adding `replace_invalid_chars` parameter to `convert_to_taggroup()` to offer automatic replacing
+  of invalid TagGroup key names
+- Improving raised errors and their message in `convert_to_taggroup()` to explain better what the 
+  error is about
+- Improve doc comment of `convert_to_taggroup()`
+- Fix `convert_to_taggroup()` function by fixing call of a non-existing function due to a typo
+
 Version 1.1.4
 =============
 

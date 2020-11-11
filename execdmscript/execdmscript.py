@@ -407,6 +407,7 @@ def convert_from_taggroup(taggroup: DM.Py_TagGroup) -> typing.Union[list, dict]:
     ))
     
     with exec_dmscript(dm_code, readvars={tg_name: tg_type}) as script:
+        remove_global_tag(tg_name)
         return script[tg_name]
     
     raise RuntimeError(
@@ -550,6 +551,19 @@ def escape_dm_string(str_content: str):
             .replace("\n", "\\n")
             .replace("\t", "\\t")
             .replace("\0", "\\0"))
+
+def remove_global_tag(*tagname: str) -> None:
+    """Remove the global tag with the given `tagname`.
+
+    Parameter
+    ---------
+    tagname : str
+        The tag name of the global tag to remove
+    """
+
+    if DM is not None:
+        for tgn in tagname:
+            DM.GetPersistentTagGroup().DeleteTagWithLabel(tgn)
 
 class DMScriptWrapper:
     """Wraps one or more dm-scripts.
@@ -1415,15 +1429,7 @@ class DMScriptWrapper:
         Make sure to always execute this function. Otherwise the persistent 
         tags will be filled with a lot of garbage.
         """
-        # python way does not work
-        # user_tags = DM.GetPersistentTagGroup()
-        # user_tags.TagGroupDeleteTagWithLabel(persistent_tag)
-
-        if not self.debug and DM is not None:
-            DM.ExecuteScriptString(
-                "GetPersistentTagGroup()." + 
-                "TagGroupDeleteTagWithLabel(\"" + self.persistent_tag + "\");"
-            )
+        remove_global_tag(self.persistent_tag)
     
     @staticmethod
     def getDMCodeForVariable(name: str, value: Convertable, 

@@ -20,6 +20,7 @@ A Python module for executing DM-Script from Python in
 		1. [Type mapping](#type-mapping)
 		2. [Escaping code](#escaping-code)
 		3. [Converting TagGroups](#converting-taggroups)
+		4. [Remove global tags](#remove-global-tags)
 3. [Installation](#installation)
 4. [License and Publications](#license-and-publications)
 
@@ -660,6 +661,35 @@ except Exception as e:
 
 	import traceback
 	traceback.print_exc()
+```
+
+#### Remove global Tags
+
+Sometimes it is necessary or convenient to set values to global tags. `execdmscript` 
+itself makes heavy use of this. To remove the remaining global tag after performing the 
+synchronization, `execdmscript` offers the `remove_global_tag()` function sice this does 
+not work with plain python.
+
+This function can be used like the following:
+```python
+import DigitalMicrograph as DM
+import execdmscript
+
+tagname = "new_global_tag"
+DM.GetPersistentTagGroup().SetTagAsString(tagname, "test value")
+
+# shows that the tag with the tagname exists
+DM.GetPersistentTagGroup().OpenBrowserWindow(False)
+
+execdmscript.remove_global_tag(tagname)
+
+#  the global tag with the tagname is removed again
+DM.GetPersistentTagGroup().OpenBrowserWindow(False)
+```
+
+Note that the following code **does not work**:
+```python
+
 ```
 
 ### Example execution without installation

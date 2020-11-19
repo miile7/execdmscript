@@ -7,6 +7,7 @@ import types
 import random
 import typing
 import pathlib
+import warnings
 import collections
 
 try:
@@ -194,8 +195,8 @@ def exec_dmscript(*scripts: Script,
     readvars : dict, optional
         The variables to read from the dm-script executed code (after the code
         execution) and to allow getting the value of, the key has to be the 
-        name in dm-script, the value is the type, for defining `TagGroup` and 
-        `TagList` structures use dicts and tuples or callbacks
+        name in dm-script, the value is the type, note that defining `TagGroup` 
+        and `TagList` structures is deprecated and will be removed
     setvars : dict, optional
         The variables to set before the code is executed (note that they must 
         not be declared), the key is the variable name, the value is the value,
@@ -660,9 +661,9 @@ class DMScriptWrapper:
         readvars : dict, optional
             The variables to read from the dm-script executed code (after the 
             code execution) and to allow getting the value of, the key has to 
-            be the name in dm-script, the value is the type, for defining 
-            `TagGroup` and `TagList` structures use dicts and tuples or 
-            callbacks
+            be the name in dm-script, the value is the type, note that defining 
+            `TagGroup` and `TagList` structures is deprecated and will be 
+            removed
         setvars : dict, optional
             The variables to set before the code is executed (note that they 
             must not be declared), the key is the variable name, the value is 
@@ -1347,6 +1348,13 @@ class DMScriptWrapper:
             
             var_type = self.readvars[var_name]
             if isinstance(var_type, (dict, list, tuple)):
+                warnings.warn(("Defining structures of TagGroups or TagLists " + 
+                               "is deprecated and already ignored. The " + 
+                               "structure is defined by the value itself " + 
+                                "and setting it from outside only adds " + 
+                                "possible errors. Use the type instead (use " + 
+                                "'dict' or 'list' instead of defining the " + 
+                                "object directly."), DeprecationWarning)
                 py_type = type(var_type)
             else:
                 py_type = get_python_type(var_type)

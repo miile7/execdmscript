@@ -20,7 +20,8 @@ A Python module for executing DM-Script from Python in
 		1. [Type mapping](#type-mapping)
 		2. [Escaping code](#escaping-code)
 		3. [Converting TagGroups](#converting-taggroups)
-		4. [Remove global tags](#remove-global-tags)
+		4. [Get global tag](#get-global-tag)
+		5. [Remove global tags](#remove-global-tags)
 3. [Installation](#installation)
 4. [License and Publications](#license-and-publications)
 
@@ -663,6 +664,44 @@ except Exception as e:
 	traceback.print_exc()
 ```
 
+#### Get global tag
+
+For accessing the persistent global tags `execdmscript` provides the `get_persistent_tag()`
+function. This function allows to directly access the persistent tags and receive the 
+value in the Python environment already converted to the python variable type. This 
+includes the base types plus `TagGroup`s and `TagList`s which are automatically converted
+to `dict`s and `list`s.
+
+The `path` parameter of the `get_persistent_tag()` function specifies which value to get.
+If no `path` is given, the current global tags will completely be returned as a Python 
+`dict`. Note that updating this dict does not change the persistent tags!
+
+The following example shows how this works:
+```python
+import execdmscript
+
+# get a tag value by the path with : as a separator
+program_name = execdmscript.get_persistent_tag("Private:Configuration:ApplicationName")
+# get a tag value by using a tuple with the path components
+program_version = execdmscript.get_persistent_tag(("Private", "Configuration", "ApplicationVersion_2"))
+print("This is {} with version {}.".format(program_name, program_version))
+
+# get another value
+print("The current save path is {}.".format(execdmscript.get_persistent_tag("Private:Current Directory")))
+
+# get a TagGroup which is automatically converted to a dict
+settings_dict = execdmscript.get_persistent_tag("Private:CreateNewDialog")
+print("When creating a new image, the following settings apply:")
+for name, val in settings_dict.items():
+	print("  {}: {}".format(name, val))
+
+# when the tag does not exist, a KeyError is raised
+try:
+	execdmscript.get_persistent_tag("This:persistent:tag:does:not:exist")
+except KeyError as e:
+	print("This tag does not exist: {}".format(e))
+```
+
 #### Remove global Tags
 
 Sometimes it is necessary or convenient to set values to global tags. `execdmscript` 
@@ -685,11 +724,6 @@ execdmscript.remove_global_tag(tagname)
 
 #  the global tag with the tagname is removed again
 DM.GetPersistentTagGroup().OpenBrowserWindow(False)
-```
-
-Note that the following code **does not work**:
-```python
-
 ```
 
 ### Example execution without installation

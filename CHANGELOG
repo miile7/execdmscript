@@ -1,3 +1,13 @@
+Version 1.1.6
+=============
+
+- Adding `remove_global_tag()` with example in README
+- Adding `debug_file` can be any file object which includes `sys.stdout` to directly print out the 
+  code to execute
+- Adding `get_persistent_tag()` with example in README
+- Adding deprecation warning when defining the strucutre of `TagGroup`s or `TagList`s in the 
+  `readvars` in the `exec_dmscript()` function
+
 Version 1.1.5
 =============
 

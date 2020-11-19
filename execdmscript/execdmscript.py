@@ -209,7 +209,7 @@ def exec_dmscript(*scripts: Script,
     debug : boolean, optional
         If True the dm-script will not be executed but written to the 
         `debug_file`, this way errors in the dm-script can be debugged
-    debug_file : str or pathlib.PurePath, optional
+    debug_file : str, pathlib.PurePath or file object, optional
         The file to save the dm-script to, this will be overwritten if it 
         exists, if not given the file is called "tmp-execdmscript.s" and will
         be placed in the current working directory, default: None
@@ -607,7 +607,7 @@ class DMScriptWrapper:
         debug : boolean, optional
             If True the dm-script will not be executed but written to the 
             `debug_file`, this way errors in the dm-script can be debugged
-        debug_file : str or pathlib.PurePath, optional
+        debug_file : str, pathlib.PurePath or file object, optional
             The file to save the dm-script to, this will be overwritten if it 
             exists, if not given the file is called "tmp-execdmscript.s" and 
             will be placed in the current working directory, default: None
@@ -652,17 +652,34 @@ class DMScriptWrapper:
         """
         
         dmscript = self.getExecDMScriptCode()
-
-        path = self.debug_file
-        if not isinstance(path, (str, pathlib.PurePath)):
-            path = os.path.join(os.getcwd(), "tmp-execdmscript.s")
         
-        if self.debug:
-            with open(path, "w+") as f:
-                f.write(dmscript)
-                f.close()
-                print(("execdmscript: Did not execute script but saved to {} " + 
-                      "because file is running in debug mode.").format(path))
+        if hasattr(self.debug_file, "write") and callable(self.debug_file.write):
+            debug_file = self.debug_file
+            close_debug_file = False
+            debug_file_name = repr(debug_file)
+        else:
+            if isinstance(self.debug_file, (str, pathlib.PurePath)):
+                path = self.debug_file
+            else:
+                path = os.path.join(os.getcwd(), "tmp-execdmscript.s")
+            
+            try:
+                debug_file = open(path, "w+")
+                # opened the file so close it after writing
+                close_debug_file = True
+                debug_file_name = path
+            except Exception:
+                debug_file = None
+                close_debug_file = False
+                debug_file_name = None
+        
+        if self.debug and debug_file is not None:
+            debug_file.write(dmscript)
+            if (close_debug_file and hasattr(debug_file, "close") and 
+                callable(debug_file.close)):
+                debug_file.close()
+            print(("execdmscript: Did not execute script but saved to {} " + 
+                    "because file is running in debug mode.").format(debug_file_name))
             return True
         else:
             try:

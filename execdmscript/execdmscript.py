@@ -88,7 +88,7 @@ _python_dm_type_map = ({
         "python": int,
         "TagGroup": "Long",
         "dmscript": "number",
-        "names": ("long", "integer", "int")
+        "names": ("long", "integer", "int", "uint32", "uint16")
     }, {
         "python": float,
         "TagGroup": "Float",
@@ -640,6 +640,11 @@ class DMScriptWrapper:
     """Wraps one or more dm-scripts.
     """
 
+    _unescape_char_reg = r"\{\{unc([\d]+)\}\}"
+    _unescape_chars_reg = "(?:{})+".format(_unescape_char_reg)
+    _unescape_char_reg = re.compile(_unescape_char_reg)
+    _unescape_chars_reg = re.compile(_unescape_chars_reg)
+
     debug_start_marker = "@execdmscript.ignore.start"
     debug_end_marker = "@execdmscript.ignore.end"
 
@@ -943,6 +948,13 @@ class DMScriptWrapper:
         #         self.getSeparateThreadWaitCode, startpos
         #     )
 
+        # execdscript used "lib"-functions
+        code = DMScriptWrapper._getExecdmscriptLibFunctions()
+        dmscript, startpos = self._addCode(
+            dmscript, code, "<execdmscript lib functions>", 
+            DMScriptWrapper._getExecdmscriptLibFunctions, startpos
+        )
+
         # the code for the readvars
         code = self.getSyncDMCode()
         dmscript, startpos = self._addCode(
@@ -1138,6 +1150,8 @@ class DMScriptWrapper:
         if not isinstance(self.readvars, dict) or len(self.readvars) == 0:
             return ""
         
+        dmscript = []
+        
         # the name of the tag group to use
         sync_code_tg_name = "sync_taggroup_" + self._creation_time_id
         
@@ -1159,181 +1173,31 @@ class DMScriptWrapper:
             "{tg}_tg.TagGroupSetIndexedTagAs{{type}}({tg}_index, {{val}});"
         )).format(tg=sync_code_tg_name, pt=self.persistent_tag)
         
-        dmscript = [sync_code_prefix.format(
+        dmscript.append(sync_code_prefix.format(
             tg=sync_code_tg_name, pt=self.persistent_tag
-        )]
-        
-        linearize_functions_added = False
+        ))
 
         for var_name, var_type in self.readvars.items():
-            if isinstance(var_type, (dict, list, tuple)):
-                dmscript += self._recursivelyGetTagGroupDefCode(
-                    sync_code_tg_name, var_type, var_name
-                )
-            else:
-                py_type = get_python_type(var_type)
+            py_type = get_python_type(var_type)
 
-                if py_type in (dict, list, tuple):
-                    # autoguess a TagGroup/TagList
-                    if not linearize_functions_added:
-                        linearize_functions_added = True
-                        dmscript.append(
-                            DMScriptWrapper._getLinearizeTagGroupFunctionsCode()
-                        )
-                    
-                    dmscript.append(
-                        "__exec_dmscript_linearizeTags({tg}_tg, {var_name}, \"{key}\", \"{key}\");".format(
-                            var_name=escape_dm_variable(var_name),
-                            key=escape_dm_string(var_name), 
-                            tg=sync_code_tg_name
-                    ))
-                else:
-                    dmscript.append(sync_code_template.format(
+            if py_type in (dict, list, tuple):
+                dmscript.append(
+                    "__exec_dmscript_linearizeTags({tg}_tg, {var_name}, \"{key}\", \"{key}\");".format(
+                        var_name=escape_dm_variable(var_name),
                         key=escape_dm_string(var_name), 
-                        val=escape_dm_variable(var_name), 
-                        type=get_dm_type(var_type, for_taggroup=True)
-                    ))
+                        tg=sync_code_tg_name
+                ))
+            else:
+                val = escape_dm_variable(var_name)
+                if py_type == str:
+                    val = "__exec_dmscript_escape_non_ascii({})".format(val)
+                    
+                dmscript.append(sync_code_template.format(
+                    key=escape_dm_string(var_name), val=val, 
+                    type=get_dm_type(var_type, for_taggroup=True)
+                ))
         
         return "\n".join(dmscript)
-    
-    def _recursivelyGetTagGroupDefCode(self, dm_tg_name: str, 
-                                       type_def: typing.Union[list, dict], 
-                                       var_name: str, 
-                                       path: typing.Optional[list]=[]) -> list:
-        """Get the code for saving a `TagGroup` or `TagList` to the persistent
-        tags with a known structure.
-
-        The tagname where the data to synchronize is saved to (direct child of 
-        the persistent tags) is the `dm_tg_name` ("_tg" will be appended). 
-        
-        The `type_def` is either a list or a dict that defines the structure. 
-        It can contain more dicts and lists or the name tag name as the key and 
-        the datattype as a value (python types and common expressions allowed).
-
-        The `var_name` is the dm-script variable name to synchronize.
-
-        The `path` is for recursive use only. It contains the indices of the 
-        parent `TagGroup`/`TagList´/`type_def`-dict. A number (has to be int)
-        indicates that this was a `TagList`, a string (also numeric strings 
-        supported) indicate that this was a `TagGroup`.
-
-        The executed code will save the `var_name` linearized to the persistent
-        tags, each tag name (or index) is separated by "/" (escape: "//"). The 
-        type is present for each key called "{{type}}<key name>".
-
-        Raises
-        ------
-        ValueError
-            When the `type_def` neither is a dict nor a list nor a tuple
-
-        Parameters
-        ----------
-        dm_tg_name : str
-            The name of the `TagGroup` to use in the background, this `TagGroup`
-            is a direct child of the persistent tags and used for 
-            synchronization (this is defined in 
-            `DMScriptWrapper::getDMSyncCode()`)
-        type_def : dict, list, tuple
-            A list or tuple to define datatypes of `TagList`s, a dict to define
-            `TagGroup` structures, can contain other dicts, lists or tuples, 
-            each value is the datatype, each key is the `TagGroup` key, each
-            index is the `TagList` index
-        var_name : str
-            The dm-script variable name to synchronize
-        path : list, optional
-            Contains the path to the current value for recursive use, never set 
-            this value!
-        
-        Returns
-        -------
-        str
-            The dm-script code to execute for saving the defined structure to
-            the persistent tags
-        """
-        dmscript = []
-        list_mode = False
-
-        if isinstance(type_def, (list, tuple)):
-            iterator = enumerate(type_def)
-            list_mode = True
-        elif isinstance(type_def, dict):
-            iterator = type_def.items()
-            list_mode = False
-        else:
-            raise ValueError("The type_def has to be a dict or a list.")
-
-        path = list(path)
-
-        dmscript.append("\n".join((
-            "if(!{tg}_tg.TagGroupDoesTagExist(\"{{{{available-paths}}}}{key}\")){{",
-                "number index_{var}_{t}{r} = {tg}_tg.TagGroupCreateNewLabeledTag(\"{{{{available-paths}}}}{key}\");",
-                "{tg}_tg.TagGroupSetIndexedTagAsString(index_{var}_{t}{r}, \"\");",
-            "}}"
-        )).format(tg=escape_dm_variable(dm_tg_name), 
-                  key=escape_dm_string(var_name), 
-                  var=escape_dm_variable(var_name), t=round(time.time() * 100),
-                  r=random.randint(0, 99999999)))
-        
-        for var_key, var_type in iterator:
-            dms = ""
-            if isinstance(var_type, (dict, list, tuple)):
-                if list_mode:
-                    # important so future calls knwo that this was a list
-                    var_key = int(var_key)
-                else:
-                    var_key = str(var_key)
-                
-                dmscript += self._recursivelyGetTagGroupDefCode(
-                    dm_tg_name, var_type, var_name, path + [var_key]
-                )
-
-                if isinstance(var_type, dict):
-                    tg_type = "TagGroup"
-                else:
-                    tg_type = "TagList"
-                
-                var_type = tg_type
-            else:
-                dms = "\n".join((
-                    "{scripttype} {var}_{varkey}_{t}{r};",
-                    "{var}.TagGroupGetTagAs{tgtype}(\"{srcpath}\", {var}_{varkey}_{t}{r});",
-                    "{tg}_index = {tg}_tg.TagGroupCreateNewLabeledTag(\"{destpath}\")",
-                    "{tg}_tg.TagGroupSetIndexedTagAs{tgtype}({tg}_index, {var}_{varkey}_{t}{r});",
-                ))
-                tg_type = get_dm_type(var_type, for_taggroup=True)
-
-            source_path = ":".join(map(
-                lambda x: "[{}]".format(x) if isinstance(x, int) else x,
-                path + [var_key]
-            ))
-            destination_path = "/".join(map(
-                lambda x: x.replace("/", "//") if isinstance(x, str) else str(x),
-                [var_name] + path + [var_key]
-            ))
-            dms = "\n".join((
-                dms,
-                "{tg}_index = {tg}_tg.TagGroupCreateNewLabeledTag(\"{{{{type}}}}{destpath}\")",
-                "{tg}_tg.TagGroupSetIndexedTagAsString({tg}_index, \"{tgtype}\");",
-                "string available_index_{var}_{varkey}_{t}{r};",
-                "{tg}_tg.TagGroupGetTagAsString(\"{{{{available-paths}}}}{key}\", available_index_{var}_{varkey}_{t}{r});",
-                "available_index_{var}_{varkey}_{t}{r} += \"{destpath};\";",
-                "{tg}_tg.TagGroupSetTagAsString(\"{{{{available-paths}}}}{key}\", available_index_{var}_{varkey}_{t}{r});",
-            )).format(
-                tg=escape_dm_variable(dm_tg_name), 
-                var=escape_dm_variable(var_name), 
-                key=escape_dm_string(var_name),
-                varkey=escape_dm_variable(var_key),
-                scripttype=get_dm_type(var_type, for_taggroup=False),
-                tgtype=escape_dm_variable(tg_type),
-                srcpath=escape_dm_string(source_path),
-                destpath=escape_dm_string(destination_path),
-                t=round(time.time() * 100),
-                r=random.randint(0, 99999999)
-            )
-
-            dmscript.append(dms)
-
-        return dmscript
     
     def _loadVariablesFromDMScript(self) -> None:
         """Load the variables from the persistent tags to dm-script."""
@@ -1347,17 +1211,7 @@ class DMScriptWrapper:
             path = self.persistent_tag + ":" + var_name
             
             var_type = self.readvars[var_name]
-            if isinstance(var_type, (dict, list, tuple)):
-                warnings.warn(("Defining structures of TagGroups or TagLists " + 
-                               "is deprecated and already ignored. The " + 
-                               "structure is defined by the value itself " + 
-                                "and setting it from outside only adds " + 
-                                "possible errors. Use the type instead (use " + 
-                                "'dict' or 'list' instead of defining the " + 
-                                "object directly."), DeprecationWarning)
-                py_type = type(var_type)
-            else:
-                py_type = get_python_type(var_type)
+            py_type = get_python_type(var_type)
             
             if py_type in (dict, list, tuple):
                 value = None
@@ -1404,7 +1258,8 @@ class DMScriptWrapper:
                                         # append was wrong
                                         value_ref.append(None)
                                 elif cur_type == "TagGroup":
-                                    key = path
+                                    key = DMScriptWrapper.unescapeNonAscii(
+                                            str(path))
                                     if key not in value_ref:
                                         value_ref[key] = None
                                 else:
@@ -1491,6 +1346,7 @@ class DMScriptWrapper:
             success, value = DM.GetPersistentTagGroup().GetTagAsBoolean(path)
         elif dm_type == "String":
             success, value = DM.GetPersistentTagGroup().GetTagAsString(path)
+            value = DMScriptWrapper.unescapeNonAscii(value)
         else:
             raise ValueError("The datatype '{}' is not supported".format(var_type))
         
@@ -1679,9 +1535,11 @@ class DMScriptWrapper:
         return dmscript
     
     @staticmethod
-    def _getLinearizeTagGroupFunctionsCode():
+    def _getExecdmscriptLibFunctions():
         """Get the dm code that defines the `__exec_dmscript_linearizeTags()`
-        function to save `TagGroup`s and `TagList`s as an 1d-"array"
+        function and the `__exec_dmscript_escape_non_ascii()` function to 
+        save `TagGroup`s and `TagList`s as an 1d-"array" and escape non ascii
+        values.
 
         Returns
         -------
@@ -1689,7 +1547,25 @@ class DMScriptWrapper:
             The dm script defining the functions
         """
 
-        return """
+        return "\n".join(map(lambda x: x.replace(8 * " ", "", 1), 
+        """
+        string __exec_dmscript_escape_non_ascii(string str){
+            string escape;
+            number l = str.len();
+            number u = 0;
+            for(number i = 0; i < l; i++){
+                u = unc(str, i);
+                if(u > 126){
+                    // current character is a non-ascii character
+                    escape = "{{unc" + u + "}}";
+                    str = str.left(i) + escape + str.right(l - i - 1);
+                    i += escape.len() - 1;
+                    l += escape.len() - 1;
+                }
+            }
+            return str;
+        }
+
         string __exec_dmscript_replace(string subject, string search, string replace){
             if(subject.find(search) < 0){
                 return subject;
@@ -1707,6 +1583,8 @@ class DMScriptWrapper:
         }
 
         void __exec_dmscript_linearizeTags(TagGroup &linearized, TagGroup tg, string var_name, string path){
+            path = __exec_dmscript_escape_non_ascii(path);
+
             string available_paths = "";
             if(linearized.TagGroupDoesTagExist("{{available-paths}}" + var_name)){
                 linearized.TagGroupGetTagAsString("{{available-paths}}" + var_name, available_paths);
@@ -1721,6 +1599,8 @@ class DMScriptWrapper:
                     else{
                         label = tg.TagGroupGetTagLabel(i).__exec_dmscript_replace("/", "//");
                     }
+                    label = __exec_dmscript_escape_non_ascii(label);
+
                     number type = tg.TagGroupGetTagType(i, 0);
                     string type_name = "";
                     number index;
@@ -1833,7 +1713,7 @@ class DMScriptWrapper:
 
                             tg.TagGroupGetIndexedTagAsString(i, value)
                             index = linearized.TagGroupCreateNewLabeledTag(p);
-                            linearized.TagGroupSetIndexedTagAsString(index, value);
+                            linearized.TagGroupSetIndexedTagAsString(index, __exec_dmscript_escape_non_ascii(value));
                             type_name = "String";
                         }
                     }
@@ -1855,7 +1735,57 @@ class DMScriptWrapper:
                 }
             }
         }
+        """.split("\n")))
+    
+    @staticmethod
+    def unescapeNonAscii(escaped: str, 
+                          encoding: typing.Optional[typing.Union[str, None]]="Windows 1252") -> str:
+        """Unescape all non-ascii escape sequences done in the dm-script 
+        functions.
+
+        The escape secuence is two curly brackets surrounding the prefix 'unc'
+        followed by the character code as a decimal number. The character code
+        is assumed to be in the given `encoding`.
+
+        Example
+        -------
+        ```python
+        >>> DMScriptWrapper.unescapeNonAscii("{{unc181}}A")
+        ... 'µA'
+        ```
+
+        Parameters
+        ----------
+        escaped : str
+            The text with the escaped unicode sequence(s)
+        encoding : str or None, optional
+            A valid encoding (usable in the python `bytes.decode()` function)
+            or None to use the `chr()` function (which is using unicode), note
+            that the former one handles byte sequences (multiple bytes 
+            following eachother), the latter one unescapes every escape 
+            sequence and concats the results which may be wrong, 
+            default: "Windows 1252"
+        
+        Returns
+        -------
+        str
+            The `escaped` with unescaped unicode sequences, if no sequence is 
+            found, the `escaped` is returned untouched
         """
+        for match in DMScriptWrapper._unescape_chars_reg.finditer(escaped):
+            codes = []
+            for m in DMScriptWrapper._unescape_char_reg.finditer(match.group(0)):
+                codes.append(int(m.group(1)))
+
+            if encoding is None:
+                unescaped = "".join(map(chr, codes))
+            else:
+                unescaped = bytes(codes).decode(encoding)
+                
+            # replace() is faster than using slices
+            escaped = escaped.replace(match.group(0), unescaped, 1)
+        
+        return escaped
 
     @staticmethod
     def normalizeScripts(scripts: typing.Sequence) -> typing.List[tuple]:

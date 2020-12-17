@@ -1,3 +1,12 @@
+Version 1.1.7
+=============
+
+- Escaping synchronized non-ascii characters in `TagGroup` keys and string values and unescaping 
+  them in python again to prevent DigitalMicrograph crashing due to encoding problems
+- Removing deprecated structure definition of `TagGroup`s and `TagList`s
+- Adding conversion support from `dm-script` UInt32 to python `int` and `dm-script` UInt16 to python
+  `int`
+
 Version 1.1.6
 =============
 

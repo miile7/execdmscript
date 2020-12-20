@@ -1,3 +1,9 @@
+Version 1.1.8 (Hotfix)
+======================
+
+- Changing default encoding to None using pythons `chr()` function using unicode which seems to be 
+  the correct encoding (not Windows 1252 as assumed by the encoding of dm-script files)
+
 Version 1.1.7
 =============
 

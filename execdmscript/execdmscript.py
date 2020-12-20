@@ -1739,7 +1739,7 @@ class DMScriptWrapper:
     
     @staticmethod
     def unescapeNonAscii(escaped: str, 
-                          encoding: typing.Optional[typing.Union[str, None]]="Windows 1252") -> str:
+                          encoding: typing.Optional[typing.Union[str, None]]=None) -> str:
         """Unescape all non-ascii escape sequences done in the dm-script 
         functions.
 
@@ -1780,7 +1780,11 @@ class DMScriptWrapper:
             if encoding is None:
                 unescaped = "".join(map(chr, codes))
             else:
-                unescaped = bytes(codes).decode(encoding)
+                try:
+                    unescaped = bytes(codes).decode(encoding)
+                except Exception as e:
+                    print("To escape string:", escaped, "bytes:", codes)
+                    raise e
                 
             # replace() is faster than using slices
             escaped = escaped.replace(match.group(0), unescaped, 1)

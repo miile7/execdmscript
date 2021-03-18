@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+import uuid
 import errno
 import types
 import random
@@ -636,6 +637,21 @@ def get_persistent_tag(path: typing.Optional[typing.Union[typing.Sequence[str], 
     raise KeyError(("No value was found in the persistent tags for " + 
                     "the path '{}'.").format(path))
 
+def unique_tag(tagname: str) -> str:
+    """Get the `tagname` with an appended UUID.
+
+    Parameters
+    ----------
+    tagname : str
+        The tagname
+    
+    Returns
+    -------
+    str
+        A unique tagname to use
+    """
+    return "{}_{}".format(tagname, str(uuid.uuid4()).replace("-", "_"))
+
 class DMScriptWrapper:
     """Wraps one or more dm-scripts.
     """
@@ -689,8 +705,8 @@ class DMScriptWrapper:
             will be placed in the current working directory, default: None
         """
         self.scripts = DMScriptWrapper.normalizeScripts(scripts)
-        self._creation_time_id = str(round(time.time() * 100))
-        self.persistent_tag = "python-dm-communication-" + self._creation_time_id
+        self._unique_id = str(uuid.uuid4()).replace("-", "_")
+        self.persistent_tag = "__execdmscript_{}".format(self._unique_id)
         self.readvars = readvars
         self.setvars = setvars
         self.synchronized_vars = {}
@@ -1060,9 +1076,9 @@ class DMScriptWrapper:
         """
 
         return "\n".join((
-            "object thread_cancel_signal{}_{} = NewCancelSignal();".format(self._creation_time_id, index),
-            "object thread_done_signal{}_{} = NewSignal(0);".format(self._creation_time_id, index),
-            "class ExecDMScriptThread{}_{} : Thread{{".format(self._creation_time_id, index),
+            "object thread_cancel_signal{}_{} = NewCancelSignal();".format(self._unique_id, index),
+            "object thread_done_signal{}_{} = NewSignal(0);".format(self._unique_id, index),
+            "class ExecDMScriptThread{}_{} : Thread{{".format(self._unique_id, index),
             "void RunThread(object self){"
         ))
     
@@ -1088,11 +1104,11 @@ class DMScriptWrapper:
 
         return "\n".join((
             "// inform that the thread is done now",
-            "thread_done_signal{}_{}.setSignal();".format(self._creation_time_id, index),
+            "thread_done_signal{}_{}.setSignal();".format(self._unique_id, index),
             "}", # end ExecDMScriptThread<id>::RunThread()
             "}", # end ExecDMScriptThread<id> class
             "alloc(ExecDMScriptThread{}_{}).StartThread();".format(
-                self._creation_time_id, index
+                self._unique_id, index
             )
         ))
     
@@ -1114,7 +1130,7 @@ class DMScriptWrapper:
         return "\n".join((
             "// wait for the thread {}".format(index),
             "thread_done_signal{id}_{i}.WaitOnSignal(infinity(), thread_cancel_signal{id}_{i});".format(
-                id=self._creation_time_id, i=index
+                id=self._unique_id, i=index
             )
         ))
     
@@ -1153,7 +1169,7 @@ class DMScriptWrapper:
         dmscript = []
         
         # the name of the tag group to use
-        sync_code_tg_name = "sync_taggroup_" + self._creation_time_id
+        sync_code_tg_name = "sync_taggroup_" + self._unique_id
         
         # declare and initialize the used variables
         sync_code_prefix = "\n".join((

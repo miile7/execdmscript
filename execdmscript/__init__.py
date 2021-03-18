@@ -27,10 +27,8 @@ Usage:
 ```
 
 This uses the persistent tags to communicate from dm-script to python.
-
-Note that this is not thread-safe!
 """
 
 from .execdmscript import *
 
-__version__ = "1.1.8"
+__version__ = "1.1.9"

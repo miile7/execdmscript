@@ -1,3 +1,9 @@
+Version 1.1.9
+=============
+
+- Changing creation of unique persistent tag names from timestamp with milliseconds to using uuids
+  to fix tag collision in parallel threads or immediately consecutive calls
+
 Version 1.1.8 (Hotfix)
 ======================
 
